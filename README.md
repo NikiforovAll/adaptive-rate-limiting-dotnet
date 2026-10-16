@@ -81,23 +81,14 @@ A controller raises the rate only after requests had to wait, so the rate does n
 
 ## Many processes, one budget
 
-When several processes share one server budget, each takes an equal share. Set `InstanceCount`, or give a live count with `WithInstanceCount<T>()`. For example, the number of processes that run Hangfire servers. One process can run several servers, and a server name has the form `host:pid:guid`, so count the distinct `host:pid`:
+When several processes share one server budget, each takes an equal share. Set `InstanceCount`, or give a live count with `WithInstanceCount<T>()`. For example, the number of processes that sent a heartbeat to a shared store in the last minute. `IHeartbeatStore` is your own type:
 
 ```csharp
-public sealed class HangfireProcessCount(JobStorage storage) : IInstanceCountSource
+public sealed class HeartbeatInstanceCount(IHeartbeatStore store) : IInstanceCountSource
 {
     private static readonly TimeSpan s_period = TimeSpan.FromMinutes(1);
 
-    public int Current =>
-        Math.Max(
-            1,
-            storage
-                .GetMonitoringApi()
-                .Servers()
-                .Select(s => string.Join(':', s.Name.Split(':').Take(2)))
-                .Distinct()
-                .Count()
-        );
+    public int Current => Math.Max(1, store.CountAlive(since: DateTimeOffset.UtcNow - s_period));
 
     public IDisposable? OnChange(Action<int> listener) =>
         new Timer(
@@ -120,7 +111,7 @@ public sealed class HangfireProcessCount(JobStorage storage) : IInstanceCountSou
 
 builder.Services
     .AddAdaptiveRateLimiter("api")
-    .WithInstanceCount<HangfireProcessCount>();
+    .WithInstanceCount<HeartbeatInstanceCount>();
 ```
 
 An exception in a `Timer` callback stops the process, so catch the storage errors. After `SetInstanceCount` or a live count, `InstanceCount` in the configuration no longer applies.
