@@ -103,7 +103,7 @@ public sealed class SharePointResourceUnitEstimator : IRequestCostEstimator
     internal int Of(HttpMethod method, string path, string query)
     {
         var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (!segments.Any(s_sharePointSegments.Contains))
+        if (!segments.Any(static s => s_sharePointSegments.Contains(s)))
         {
             return 0;
         }
@@ -116,7 +116,7 @@ public sealed class SharePointResourceUnitEstimator : IRequestCostEstimator
             value?.Contains(PermissionsName, StringComparison.OrdinalIgnoreCase) == true;
 
         if (
-            segments.Any(s => s.Equals(PermissionsName, StringComparison.OrdinalIgnoreCase))
+            segments.Any(static s => s.Equals(PermissionsName, StringComparison.OrdinalIgnoreCase))
             || HasPermissions(Parameter(ExpandParameter))
             || HasPermissions(Parameter(SelectParameter))
         )

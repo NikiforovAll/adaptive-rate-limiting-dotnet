@@ -1,5 +1,5 @@
-using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text.Json;
 
 namespace Nall.RateLimiting.Adaptive.MicrosoftGraph;
@@ -21,6 +21,7 @@ public sealed class GraphBatchThrottleClassifier : IThrottleClassifier
     private const string HeadersProperty = "headers";
     private const string RetryAfterHeader = "Retry-After";
 
+    private readonly TimeProvider _time;
     private readonly HttpThrottleClassifier _status;
 
     /// <summary>
@@ -31,7 +32,8 @@ public sealed class GraphBatchThrottleClassifier : IThrottleClassifier
     /// </param>
     public GraphBatchThrottleClassifier(TimeProvider? timeProvider = null)
     {
-        _status = new HttpThrottleClassifier(timeProvider);
+        _time = timeProvider ?? TimeProvider.System;
+        _status = new HttpThrottleClassifier(_time);
     }
 
     /// <inheritdoc />
@@ -58,7 +60,7 @@ public sealed class GraphBatchThrottleClassifier : IThrottleClassifier
         return OfBatch(body) ?? signal;
     }
 
-    private static ThrottleSignal? OfBatch(byte[] body)
+    private ThrottleSignal? OfBatch(byte[] body)
     {
         try
         {
@@ -98,7 +100,7 @@ public sealed class GraphBatchThrottleClassifier : IThrottleClassifier
         }
     }
 
-    private static TimeSpan? RetryAfterOf(JsonElement response)
+    private TimeSpan? RetryAfterOf(JsonElement response)
     {
         if (
             !response.TryGetProperty(HeadersProperty, out var headers)
@@ -113,15 +115,15 @@ public sealed class GraphBatchThrottleClassifier : IThrottleClassifier
         {
             if (
                 header.Name.Equals(RetryAfterHeader, StringComparison.OrdinalIgnoreCase)
-                && int.TryParse(
-                    header.Value.ToString(),
-                    NumberStyles.Integer,
-                    CultureInfo.InvariantCulture,
-                    out var seconds
-                )
+                && RetryConditionHeaderValue.TryParse(header.Value.ToString(), out var value)
             )
             {
-                return TimeSpan.FromSeconds(seconds);
+                return value switch
+                {
+                    { Delta: { } delta } => delta,
+                    { Date: { } date } => date - _time.GetUtcNow(),
+                    _ => null,
+                };
             }
         }
 

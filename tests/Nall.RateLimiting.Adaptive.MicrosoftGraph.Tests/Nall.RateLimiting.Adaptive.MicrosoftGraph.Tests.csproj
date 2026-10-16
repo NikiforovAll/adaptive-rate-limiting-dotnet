@@ -14,6 +14,11 @@
 
   <ItemGroup>
     <Using Include="Shouldly" />
+    <Using Include="Nall.RateLimiting.Adaptive.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Nall.RateLimiting.Adaptive.Tests\TestMetrics.cs" Link="TestMetrics.cs" />
   </ItemGroup>
 
   <ItemGroup>

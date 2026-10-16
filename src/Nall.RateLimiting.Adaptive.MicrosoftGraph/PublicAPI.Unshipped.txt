@@ -1,7 +1,6 @@
 #nullable enable
 const Nall.RateLimiting.Adaptive.MicrosoftGraph.SharePointCsom.Category = "csom" -> string!
 const Nall.RateLimiting.Adaptive.MicrosoftGraph.SharePointCsom.DefaultCallUnits = 2 -> int
-const Nall.RateLimiting.Adaptive.MicrosoftGraph.SharePointCsom.MaxRetry = 10 -> int
 const Nall.RateLimiting.Adaptive.MicrosoftGraph.SharePointResourceUnitEstimator.BatchCategory = "sharepoint.batch" -> string!
 const Nall.RateLimiting.Adaptive.MicrosoftGraph.SharePointResourceUnitEstimator.GraphCategory = "graph" -> string!
 const Nall.RateLimiting.Adaptive.MicrosoftGraph.SharePointResourceUnitEstimator.SharePointCategory = "sharepoint" -> string!
@@ -26,6 +25,5 @@ Nall.RateLimiting.Adaptive.MicrosoftGraph.SharePointResourceUnitEstimator.ShareP
 static Microsoft.Extensions.DependencyInjection.SharePointRateLimiterBuilderExtensions.ForSharePoint(this Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder! builder, Nall.RateLimiting.Adaptive.MicrosoftGraph.SharePointResourceUnitCosts? costs = null) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
 static Nall.RateLimiting.Adaptive.MicrosoftGraph.GraphClientHandlers.CreateDefaultHandlers(Nall.RateLimiting.Adaptive.AdaptiveRateLimiter! limiter, Nall.RateLimiting.Adaptive.IRequestCostEstimator? costEstimator = null, Microsoft.Graph.GraphClientOptions? graphClientOptions = null) -> System.Collections.Generic.IList<System.Net.Http.DelegatingHandler!>!
 static Nall.RateLimiting.Adaptive.MicrosoftGraph.GraphClientHandlers.InsertRateLimitHandler(System.Collections.Generic.IList<System.Net.Http.DelegatingHandler!>! handlers, System.Net.Http.DelegatingHandler! rateLimitHandler) -> System.Collections.Generic.IList<System.Net.Http.DelegatingHandler!>!
-static Nall.RateLimiting.Adaptive.MicrosoftGraph.SharePointCsom.CreateCostEstimator(int callUnits = 2) -> Nall.RateLimiting.Adaptive.FixedCostEstimator!
 static Nall.RateLimiting.Adaptive.MicrosoftGraph.SharePointCsom.CreateHandler(Nall.RateLimiting.Adaptive.AdaptiveRateLimiter! limiter, System.Net.Http.HttpMessageHandler? innerHandler = null, int callUnits = 2) -> System.Net.Http.DelegatingHandler!
 static Nall.RateLimiting.Adaptive.MicrosoftGraph.SharePointRateLimiter.Create(string! name, Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions? options = null, System.TimeProvider? timeProvider = null, System.Diagnostics.Metrics.IMeterFactory? meterFactory = null) -> Nall.RateLimiting.Adaptive.AdaptiveRateLimiter!

@@ -40,7 +40,7 @@ public sealed class GraphClientHandlersTests
             new() { InitialUnitsPerMinute = 600 }
         );
         var units = 0L;
-        using var listener = TestHelpers.Listen(
+        using var listener = TestMetrics.Listen(
             limiter,
             AdaptiveRateLimiterMetrics.UnitsInstrument,
             v => units += v
@@ -69,13 +69,13 @@ public sealed class GraphClientHandlersTests
             new() { InitialUnitsPerMinute = 600 }
         );
         var units = 0L;
-        using var listener = TestHelpers.Listen(
+        using var listener = TestMetrics.Listen(
             limiter,
             AdaptiveRateLimiterMetrics.UnitsInstrument,
             v => units += v
         );
         var throttled = new List<Dictionary<string, object?>>();
-        using var throttledListener = TestHelpers.Listen(
+        using var throttledListener = TestMetrics.Listen(
             limiter,
             AdaptiveRateLimiterMetrics.ThrottledInstrument,
             (_, tags) => throttled.Add(tags)
@@ -106,13 +106,13 @@ public sealed class GraphClientHandlersTests
             new() { InitialUnitsPerMinute = 600 }
         );
         var units = 0L;
-        using var unitsListener = TestHelpers.Listen(
+        using var unitsListener = TestMetrics.Listen(
             limiter,
             AdaptiveRateLimiterMetrics.UnitsInstrument,
             v => units += v
         );
         var throttled = new List<(long Count, Dictionary<string, object?> Tags)>();
-        using var throttledListener = TestHelpers.Listen(
+        using var throttledListener = TestMetrics.Listen(
             limiter,
             AdaptiveRateLimiterMetrics.ThrottledInstrument,
             (value, tags) => throttled.Add((value, tags))
@@ -163,7 +163,7 @@ public sealed class GraphClientHandlersTests
             new() { Enabled = false }
         );
         var throttled = 0L;
-        using var listener = TestHelpers.Listen(
+        using var listener = TestMetrics.Listen(
             limiter,
             AdaptiveRateLimiterMetrics.ThrottledInstrument,
             v => throttled += v

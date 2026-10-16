@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Nall.RateLimiting.Adaptive.MicrosoftGraph.Tests;
 
@@ -26,6 +27,23 @@ public sealed class GraphBatchThrottleClassifierTests
         var signal = await Classify(response, s_batch);
 
         signal.ShouldBe(new ThrottleSignal(503, TimeSpan.FromSeconds(20), 2));
+    }
+
+    [Test]
+    public async Task ClassifyAsync_InnerRetryAfterDate_IsTheTimeUntilTheDate()
+    {
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        using var response = Ok(
+            """{"responses":[{"id":"1","status":429,"headers":{"Retry-After":"Thu, 01 Jan 2026 00:00:30 GMT"}}]}"""
+        );
+
+        var signal = await new GraphBatchThrottleClassifier(time).ClassifyAsync(
+            response,
+            s_batch,
+            CancellationToken.None
+        );
+
+        signal.RetryAfter.ShouldBe(TimeSpan.FromSeconds(30));
     }
 
     [Test]

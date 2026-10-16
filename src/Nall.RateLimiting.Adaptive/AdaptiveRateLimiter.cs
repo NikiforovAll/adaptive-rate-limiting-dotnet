@@ -123,16 +123,7 @@ public sealed class AdaptiveRateLimiter : IDisposable
         }
     }
 
-    internal bool Enabled
-    {
-        get
-        {
-            lock (_lock)
-            {
-                return _options.Enabled;
-            }
-        }
-    }
+    internal bool Enabled => Volatile.Read(ref _options).Enabled;
 
     internal int QueuedCount => _bucket.QueuedCount;
 
@@ -290,12 +281,10 @@ public sealed class AdaptiveRateLimiter : IDisposable
             var controller = _customController ?? copy.CreateController();
 
             var previous = _instanceCount;
-            _options = copy;
+            Volatile.Write(ref _options, copy);
             _controller = controller;
-            _instanceCount = instanceCount;
-            _rateBeforeLastDecrease = _rateBeforeLastDecrease * previous / instanceCount;
             _bucket.SetLimits(BucketBurst(copy), Math.Max(0, copy.QueueLimit));
-            SetRate(_rate * previous / instanceCount);
+            Rescale(previous, instanceCount);
         }
     }
 
@@ -441,6 +430,11 @@ public sealed class AdaptiveRateLimiter : IDisposable
         }
 
         _options.Validate(instanceCount);
+        Rescale(previous, instanceCount);
+    }
+
+    private void Rescale(int previous, int instanceCount)
+    {
         _instanceCount = instanceCount;
         _rateBeforeLastDecrease = _rateBeforeLastDecrease * previous / instanceCount;
         SetRate(_rate * previous / instanceCount);
@@ -449,7 +443,13 @@ public sealed class AdaptiveRateLimiter : IDisposable
     private void SetRate(double unitsPerMinute)
     {
         var rate = double.IsNaN(unitsPerMinute) ? _rate : unitsPerMinute;
-        _rate = _options.Enabled ? Math.Clamp(rate, MinRate, Math.Max(MinRate, MaxRate)) : rate;
+        rate = _options.Enabled ? Math.Clamp(rate, MinRate, Math.Max(MinRate, MaxRate)) : rate;
+        if (rate == _rate)
+        {
+            return;
+        }
+
+        _rate = rate;
         _bucket.SetRate(BucketRate(_rate));
     }
 
@@ -467,14 +467,15 @@ public sealed class AdaptiveRateLimiter : IDisposable
 
         var start = _time.GetTimestamp();
         using var timeout = new CancellationTokenSource(options.MaxWait, _time);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            timeout.Token
-        );
+        using var linked = cancellationToken.CanBeCanceled
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token)
+            : null;
 
         try
         {
-            using var lease = await _bucket.AcquireAsync(units, linked.Token).ConfigureAwait(false);
+            using var lease = await _bucket
+                .AcquireAsync(units, linked?.Token ?? timeout.Token)
+                .ConfigureAwait(false);
             if (!lease.IsAcquired)
             {
                 _metrics.RecordRejected(Name, "queue_full");

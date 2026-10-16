@@ -24,17 +24,9 @@ public static class SharePointCsom
     public const string Category = "csom";
 
     /// <summary>
-    /// The most retries that the Kiota retry handler allows: 10.
+    /// The most retries that the Kiota retry handler allows.
     /// </summary>
-    public const int MaxRetry = 10;
-
-    /// <summary>
-    /// Creates an estimator that gives each CSOM call <paramref name="callUnits"/>.
-    /// </summary>
-    /// <param name="callUnits">The units of one call. Zero or more.</param>
-    /// <returns>The estimator.</returns>
-    public static FixedCostEstimator CreateCostEstimator(int callUnits = DefaultCallUnits) =>
-        new(callUnits, Category);
+    internal const int MaxRetry = 10;
 
     /// <summary>
     /// Creates the handler pipeline for CSOM: the Kiota retry handler, then the limit handler,
@@ -59,7 +51,7 @@ public static class SharePointCsom
     {
         ArgumentNullException.ThrowIfNull(limiter);
 
-        var estimator = CreateCostEstimator(callUnits);
+        var estimator = new FixedCostEstimator(callUnits, Category);
         return new RetryHandler(new RetryHandlerOption { MaxRetry = MaxRetry })
         {
             InnerHandler = new AdaptiveRateLimitHandler(limiter, estimator)

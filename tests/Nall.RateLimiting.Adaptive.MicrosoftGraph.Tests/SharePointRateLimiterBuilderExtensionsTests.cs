@@ -28,7 +28,7 @@ public sealed class SharePointRateLimiterBuilderExtensionsTests
         using var provider = services.BuildServiceProvider();
         var limiter = provider.GetRequiredKeyedService<AdaptiveRateLimiter>(name);
         var units = 0L;
-        using var listener = TestHelpers.Listen(
+        using var listener = TestMetrics.Listen(
             limiter,
             AdaptiveRateLimiterMetrics.UnitsInstrument,
             v => units += v

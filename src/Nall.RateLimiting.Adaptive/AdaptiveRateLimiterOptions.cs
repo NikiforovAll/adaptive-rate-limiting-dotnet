@@ -143,8 +143,8 @@ public sealed class AdaptiveRateLimiterOptions
             nameof(Controller)
         );
 
-        (Aimd ?? new()).Validate();
-        (Cubic ?? new()).Validate();
+        Aimd.Validate();
+        Cubic.Validate();
 
         var minPerSecond = min / 60;
         var units = Math.Min(MaxRequestUnits, Math.Max(1, minPerSecond * Burst.TotalSeconds));
