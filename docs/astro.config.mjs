@@ -7,7 +7,7 @@ export default defineConfig({
 	base: '/adaptive-rate-limiting-dotnet',
 	integrations: [
 		starlight({
-			title: 'Nall.RateLimiting.Adaptive',
+			title: 'RateLimiting.Adaptive',
 			description: 'Adaptive client-side rate limiting for .NET HttpClient, with pluggable rate controllers.',
 			social: [
 				{
