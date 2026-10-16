@@ -9,7 +9,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 **Symptom:** the first resolve of the limiter, or its constructor, throws `ArgumentOutOfRangeException`.
 
-**Cause:** the options are not valid at the share of one process. The most common case: you set `MaxUnitsPerMinute` below the default `InitialUnitsPerMinute` of 1,500.
+**Cause:** the options are not valid at the share of one process. The most common case: you set `MaxUnitsPerMinute` below the default `InitialUnitsPerMinute` of 600, or of 1,500 with `ForSharePoint()`.
 
 **Fix:** set `InitialUnitsPerMinute`, `MinUnitsPerMinute` and `MaxUnitsPerMinute` together. The message names the option that failed. See [Validation](/adaptive-rate-limiting-dotnet/guide/configuration/#validation).
 
@@ -22,7 +22,7 @@ Check these causes:
 - The new options are not valid. The limiter logs a warning with event ID 1 and keeps the old options. A frequent case is a new `MaxUnitsPerMinute` below `InitialUnitsPerMinute`.
 - A value does not parse, for example `"abc"` for a number or `"5"` for a `TimeSpan`. The reload of the configuration throws `InvalidOperationException`, and no warning is logged. Use `00:00:05` for 5 seconds.
 - The limiter keeps its current rate on a reload. It moves the rate only if the rate is outside the new minimum and maximum. A new `InitialUnitsPerMinute` has no effect on a running limiter.
-- A live instance count source is attached. Then `InstanceCount` in the configuration no longer applies.
+- A live instance count source is attached, or the code called `SetInstanceCount`. Then `InstanceCount` in the configuration no longer applies.
 
 ## Many 429s
 

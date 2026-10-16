@@ -63,7 +63,7 @@ builder
 }
 ```
 
-The builder methods (`WithCostEstimator`, `WithThrottleClassifier`, `WithController`, `WithInstanceCount`) take an instance, or a type that the container creates.
+The builder methods (`WithCostEstimator`, `WithThrottleClassifier`, `WithController`, `WithInstanceCount`) take an instance, or a type that the container creates. `WithDefaults` sets default options that the configuration can change. See [The order of the settings](/adaptive-rate-limiting-dotnet/guide/configuration/#the-order-of-the-settings).
 
 Get a limiter by its name:
 
@@ -199,7 +199,8 @@ new AdaptiveRateLimiter(
     controller: null, // IRateController, or null for the Controller option
     throttleClassifier: null, // IThrottleClassifier, or null for 429 and 503 with Retry-After
     timeProvider: null, // TimeProvider, or null for TimeProvider.System
-    meterFactory: null // IMeterFactory, or null for a static meter
+    meterFactory: null, // IMeterFactory, or null for a static meter
+    logger: null // ILogger, or null for no logs
 );
 ```
 

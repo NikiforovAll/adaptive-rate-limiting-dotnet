@@ -67,9 +67,26 @@ public sealed class LiveWorkerCount(IWorkerRegistry registry) : IInstanceCountSo
     public int Current => Math.Max(1, registry.CountLiveWorkers());
 
     public IDisposable? OnChange(Action<int> listener) =>
-        new Timer(_ => listener(Current), null, s_period, s_period);
+        new Timer(
+            _ =>
+            {
+                try
+                {
+                    listener(Current);
+                }
+                catch (Exception)
+                {
+                    // The store is not available. Keep the last count.
+                }
+            },
+            null,
+            s_period,
+            s_period
+        );
 }
 ```
+
+An exception in a `Timer` callback stops the process. Catch the errors of the store in the callback.
 
 `IWorkerRegistry` stands for any shared store that knows the live processes: a heartbeat table in a database, a key per process with a time-to-live in a cache, or the replica count of an orchestrator. Count only the processes that use this budget.
 
@@ -89,8 +106,9 @@ limiter.UseInstanceCount(new LiveWorkerCount(registry));
 ### Rules
 
 - `Current` must be 1 or more. Return at least 1, also when the store is empty or not available.
-- A source replaces the source before it. `InstanceCount` in the options then no longer applies, also after a reload.
-- If the first count is not valid for the options, `UseInstanceCount` throws `ArgumentOutOfRangeException`. A later count that is not valid is ignored, and the limiter keeps its count.
+- A source replaces the source before it.
+- After `SetInstanceCount` or `UseInstanceCount`, `InstanceCount` in the options no longer applies, also after a reload.
+- If the first count is not valid for the options, `UseInstanceCount` throws `ArgumentOutOfRangeException`. A later count that is not valid is ignored, and the limiter keeps its count. The limiter logs a warning with event ID 2. See [Logs](/adaptive-rate-limiting-dotnet/guide/configuration/#logs).
 - `StaticInstanceCountSource(count)` is a source that never changes.
 
 <Aside type="caution" title="Each share must be valid">

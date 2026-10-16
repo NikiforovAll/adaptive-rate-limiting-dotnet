@@ -109,7 +109,7 @@ Choose the values like this:
 - `InitialUnitsPerMinute`: a safe rate to start with. It must be between the minimum and the maximum.
 
 <Aside type="caution" title="Set all three rates">
-The defaults are `1500`, `200` and `5625`. They fit the SharePoint resource-unit budget, and they can change in a later version. If you set only `MaxUnitsPerMinute` below `1500`, the initial rate is above the maximum and the limiter does not start. Set all three rates for each API.
+The defaults are `600`, `60` and `1200`. They are only a start point, and they can change in a later version. If you set only `MaxUnitsPerMinute` below `600`, the initial rate is above the maximum and the limiter does not start. Set all three rates for each API. For SharePoint, `ForSharePoint()` sets [other defaults](/adaptive-rate-limiting-dotnet/guide/microsoft-graph/#the-sharepoint-defaults).
 </Aside>
 
 All options are in [Configuration](/adaptive-rate-limiting-dotnet/guide/configuration/).

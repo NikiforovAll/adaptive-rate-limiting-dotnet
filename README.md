@@ -44,7 +44,7 @@ The settings bind from `AdaptiveRateLimiting:Limiters:<name>` and reload on chan
 }
 ```
 
-You can also pass a delegate (`AddAdaptiveRateLimiter("api", o => o.MaxUnitsPerMinute = 1200)`) or another `IConfiguration` section. Get the limiter with `GetRequiredKeyedService<AdaptiveRateLimiter>("api")`.
+A limiter is on by default (`Enabled` is `true`). The default rates are 600, 60 and 1,200 units per minute: set the rates for each API. You can also pass a delegate (`AddAdaptiveRateLimiter("api", o => o.MaxUnitsPerMinute = 1200)`) or another `IConfiguration` section. `WithDefaults(o => ...)` sets defaults that the configuration and the delegate can change. Get the limiter with `GetRequiredKeyedService<AdaptiveRateLimiter>("api")`. The limiter logs warnings through the `ILoggerFactory` of the container.
 
 ## Usage without dependency injection
 
@@ -81,23 +81,49 @@ A controller raises the rate only after requests had to wait, so the rate does n
 
 ## Many processes, one budget
 
-When several processes share one server budget, each takes an equal share. Set `InstanceCount`, or give a live count with `WithInstanceCount<T>()`. For example, the number of Hangfire servers:
+When several processes share one server budget, each takes an equal share. Set `InstanceCount`, or give a live count with `WithInstanceCount<T>()`. For example, the number of processes that run Hangfire servers. One process can run several servers, and a server name has the form `host:pid:guid`, so count the distinct `host:pid`:
 
 ```csharp
-public sealed class HangfireServerCount(JobStorage storage) : IInstanceCountSource
+public sealed class HangfireProcessCount(JobStorage storage) : IInstanceCountSource
 {
     private static readonly TimeSpan s_period = TimeSpan.FromMinutes(1);
 
-    public int Current => Math.Max(1, storage.GetMonitoringApi().Servers().Count);
+    public int Current =>
+        Math.Max(
+            1,
+            storage
+                .GetMonitoringApi()
+                .Servers()
+                .Select(s => string.Join(':', s.Name.Split(':').Take(2)))
+                .Distinct()
+                .Count()
+        );
 
     public IDisposable? OnChange(Action<int> listener) =>
-        new Timer(_ => listener(Current), null, s_period, s_period);
+        new Timer(
+            _ =>
+            {
+                try
+                {
+                    listener(Current);
+                }
+                catch (Exception)
+                {
+                    // The storage is not available. Keep the last count.
+                }
+            },
+            null,
+            s_period,
+            s_period
+        );
 }
 
 builder.Services
     .AddAdaptiveRateLimiter("api")
-    .WithInstanceCount<HangfireServerCount>();
+    .WithInstanceCount<HangfireProcessCount>();
 ```
+
+An exception in a `Timer` callback stops the process, so catch the storage errors. After `SetInstanceCount` or a live count, `InstanceCount` in the configuration no longer applies.
 
 ## Microsoft Graph and SharePoint
 
@@ -118,8 +144,10 @@ builder.Services.AddAdaptiveRateLimiter("sharepoint").ForSharePoint();
 
 Then pass `GetRequiredKeyedService<AdaptiveRateLimiter>("sharepoint")` to `GraphClientHandlers.CreateDefaultHandlers`.
 
+`ForSharePoint()` and `SharePointRateLimiter.CreateOptions()` set SharePoint defaults: 1,500 units per minute at the start, 200 at least and 5,625 at most (90% of the per-minute budget of the largest tenants). The configuration can change them. SharePoint gives each app 1,250 to 6,250 units per minute and 1,200,000 to 6,000,000 in 24 hours, by the license count of the tenant. At 5,625 units per minute, the largest 24-hour budget runs out in about 18 hours, so for a job that runs all day, set `MaxUnitsPerMinute` to the budget of your tenant.
+
 - `SharePointResourceUnitEstimator` counts the units of each request, and of each inner request of a `$batch`. Change the costs with `SharePointResourceUnitCosts`.
-- `GraphBatchThrottleClassifier` reads a `$batch` response, because Graph answers 200 even when it throttles inner requests.
+- `GraphBatchThrottleClassifier` reads the response to a `POST` to `$batch`, because Graph answers 200 even when it throttles inner requests.
 - `SharePointCsom.CreateHandler(limiter)` makes the handler pipeline for CSOM calls (2 units per call by default), so that CSOM and Graph share one budget.
 
 ## Metrics

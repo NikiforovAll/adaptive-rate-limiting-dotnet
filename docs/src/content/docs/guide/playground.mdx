@@ -49,7 +49,7 @@ The comparison below the live view runs all modes for 15 simulated minutes on on
 | Requests | Each instance makes requests at random times, at the demand rate. A request costs 1, 2 or 5 units (6 of 10 cost 1, 3 cost 2, 1 costs 5). |
 | Network | A fixed time of 0.2 seconds from send to response. |
 | Retry | A retry handler outside the limiter sends a throttled request again after its `Retry-After`, up to 3 times. |
-| Limiter | The rules of `AdaptiveRateLimiter`, `AdaptiveTokenBucket`, `AimdController` and `CubicController`, with the default options. |
+| Limiter | The rules of `AdaptiveRateLimiter`, `AdaptiveTokenBucket`, `AimdController` and `CubicController`, with the default options and the SharePoint default rates (1,500, 200 and 5,625 units per minute). |
 | Fixed rate | A token bucket at the initial rate share, without cuts and without the pause. |
 
 <Aside>

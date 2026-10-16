@@ -7,6 +7,8 @@ import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
 ## Ways to configure a limiter
 
+With dependency injection, each named limiter reads its settings from the configuration section `AdaptiveRateLimiting:Limiters:<name>`. A limiter is on by default: `Enabled` is `true`. Set `Enabled` to `false` to stop the limits and keep the metrics.
+
 <Tabs>
 <TabItem label="Configuration section">
 
@@ -78,6 +80,28 @@ limiter.UpdateOptions(
 </TabItem>
 </Tabs>
 
+## The order of the settings
+
+The settings of a named limiter apply in this order. Each step changes only the values that it sets.
+
+1. The defaults of `AdaptiveRateLimiterOptions`.
+2. The defaults of `WithDefaults`. For example, `ForSharePoint()` sets the [SharePoint defaults](/adaptive-rate-limiting-dotnet/guide/microsoft-graph/#the-sharepoint-defaults).
+3. The configuration section.
+4. The configure delegate of `AddAdaptiveRateLimiter`.
+
+```csharp
+builder
+    .Services.AddAdaptiveRateLimiter("search-api")
+    .WithDefaults(o =>
+    {
+        o.InitialUnitsPerMinute = 300;
+        o.MinUnitsPerMinute = 30;
+        o.MaxUnitsPerMinute = 900;
+    });
+```
+
+A later call to `WithDefaults` replaces the defaults of the calls before it. If you call `WithDefaults` after `ForSharePoint()`, the SharePoint defaults no longer apply.
+
 ## Value formats
 
 The binding reads each key that is set, and keeps the current value of each key that is not set. It does not use reflection, so it is safe for trimming and native AOT.
@@ -98,10 +122,10 @@ All rates are in units per minute, for the whole budget. Each of the `InstanceCo
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `Enabled` | `bool` | `true` | When `false`, requests are not limited, but units and throttled responses are still recorded. |
-| `InstanceCount` | `int` | `1` | The number of processes that share the budget, until `SetInstanceCount` or an `IInstanceCountSource` sets the live count. |
-| `InitialUnitsPerMinute` | `double` | `1500` | The rate at the start. |
-| `MinUnitsPerMinute` | `double` | `200` | The lowest rate. |
-| `MaxUnitsPerMinute` | `double` | `5625` | The highest rate. Set it below the published limit of the API. |
+| `InstanceCount` | `int` | `1` | The number of processes that share the budget, until `SetInstanceCount` or an `IInstanceCountSource` sets the count. |
+| `InitialUnitsPerMinute` | `double` | `600` | The rate at the start. |
+| `MinUnitsPerMinute` | `double` | `60` | The lowest rate. |
+| `MaxUnitsPerMinute` | `double` | `1200` | The highest rate. Set it below the published limit of the API. |
 | `DecreaseCooldown` | `TimeSpan` | 5 seconds | A burst of throttled responses cuts the rate once in this period, not once for each response. |
 | `Burst` | `TimeSpan` | 10 seconds | The bucket holds the units of this period at the current rate. |
 | `QueueLimit` | `int` | `500` | The most requests that can wait for units. `0` means that no request can wait. |
@@ -112,8 +136,8 @@ All rates are in units per minute, for the whole budget. Each of the `InstanceCo
 | `Aimd` | `AimdOptions` | see below | The settings of the AIMD controller. |
 | `Cubic` | `CubicOptions` | see below | The settings of the CUBIC controller. |
 
-<Aside type="caution" title="The defaults fit SharePoint">
-The default rates fit the SharePoint resource-unit budget of a large tenant, through Microsoft Graph. They can change in a later version. For any other API, set `InitialUnitsPerMinute`, `MinUnitsPerMinute` and `MaxUnitsPerMinute`.
+<Aside type="caution" title="Set the rates for each API">
+The default rates are only a start point, and they can change in a later version. Set `InitialUnitsPerMinute`, `MinUnitsPerMinute` and `MaxUnitsPerMinute` below the budget of your API. For SharePoint through Microsoft Graph, `ForSharePoint()` and `SharePointRateLimiter.CreateOptions()` give [other defaults](/adaptive-rate-limiting-dotnet/guide/microsoft-graph/#the-sharepoint-defaults).
 </Aside>
 
 ## AimdOptions
@@ -164,6 +188,8 @@ When the configuration changes, the limiter applies the new options:
 
 If the new options are not valid, the limiter keeps the old ones and logs a warning with event ID 1: `The new settings of rate limiter '<name>' are not valid; it keeps the old ones.`
 
+After `SetInstanceCount` or `UseInstanceCount`, `InstanceCount` in the reloaded options does not apply. The limiter keeps the count that it has.
+
 <Aside type="danger" title="A value that does not parse">
 The warning covers values that parse but are out of range. A value that does not parse, such as `"MaxUnitsPerMinute": "abc"`, throws `InvalidOperationException` from the reload of the configuration. The limiter keeps its old options, but no warning is logged. With `IConfigurationRoot.Reload()`, the caller gets an `AggregateException`.
 </Aside>
@@ -173,5 +199,18 @@ The warning covers values that parse but are out of range. A value that does not
 | Method | Effect |
 | --- | --- |
 | `UpdateOptions(options)` | Applies new options, with the rules of live reload. Throws `ArgumentOutOfRangeException` if they are not valid. |
-| `SetInstanceCount(count)` | Changes the number of processes and scales the rate to the new share. |
-| `UseInstanceCount(source)` | Takes the instance count from a live source. `InstanceCount` in the options then no longer applies. |
+| `SetInstanceCount(count)` | Changes the number of processes and scales the rate to the new share. `InstanceCount` in the options then no longer applies, also after a reload. |
+| `UseInstanceCount(source)` | Takes the instance count from a live source. `InstanceCount` in the options then no longer applies, also after a reload. |
+
+The read-only property `Enabled` tells if the limiter limits requests now.
+
+## Logs
+
+The limiter logs these warnings:
+
+| Event ID | When |
+| --- | --- |
+| 1 | The new options of a reload are not valid. The limiter keeps the old options. |
+| 2 | A live instance count is not valid for the options. The limiter ignores it and keeps its count. |
+
+With dependency injection, the limiter gets its logger from the `ILoggerFactory` of the container. Without dependency injection, pass an `ILogger` to the `logger` parameter of the constructor. With no logger, the limiter logs nothing.

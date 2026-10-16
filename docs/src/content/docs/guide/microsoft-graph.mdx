@@ -29,14 +29,11 @@ Read the page for the limits per tenant size. Microsoft can change the limits an
 <TabItem label="Without dependency injection">
 
 ```csharp title="Program.cs"
-var limiter = SharePointRateLimiter.Create(
-    "sharepoint",
-    new AdaptiveRateLimiterOptions
-    {
-        InitialUnitsPerMinute = 600,
-        MaxUnitsPerMinute = 1100,
-    }
-);
+var options = SharePointRateLimiter.CreateOptions();
+options.InitialUnitsPerMinute = 600;
+options.MaxUnitsPerMinute = 1100;
+
+var limiter = SharePointRateLimiter.Create("sharepoint", options);
 var handlers = GraphClientHandlers.CreateDefaultHandlers(limiter);
 var httpClient = GraphClientFactory.Create(handlers);
 
@@ -44,7 +41,7 @@ var credential = new ClientSecretCredential("tenant-id", "client-id", "client-se
 var graph = new GraphServiceClient(httpClient, credential);
 ```
 
-`SharePointRateLimiter.Create` makes a limiter with the `$batch` throttle classifier. `GraphClientHandlers.CreateDefaultHandlers` makes the default Graph handlers, and adds an `AdaptiveRateLimitHandler` with the SharePoint cost estimator.
+`SharePointRateLimiter.CreateOptions` gives options with the [SharePoint defaults](#the-sharepoint-defaults). `SharePointRateLimiter.Create` makes a limiter with the `$batch` throttle classifier. If you do not give options, it uses `CreateOptions()`. `GraphClientHandlers.CreateDefaultHandlers` makes the default Graph handlers, and adds an `AdaptiveRateLimitHandler` with the SharePoint cost estimator.
 
 </TabItem>
 <TabItem label="With dependency injection">
@@ -61,20 +58,36 @@ builder.Services.AddSingleton(sp =>
 });
 ```
 
-`ForSharePoint()` sets the SharePoint cost estimator and the `$batch` throttle classifier on the named limiter. The estimator applies to clients with `AddAdaptiveRateLimitHandler("sharepoint")`. A Graph client gets its estimator from `CreateDefaultHandlers`.
+`ForSharePoint()` sets the SharePoint cost estimator, the `$batch` throttle classifier and the [SharePoint defaults](#the-sharepoint-defaults) on the named limiter. The defaults apply before the configuration binds, so the configuration section and a configure delegate can change them. The estimator applies to clients with `AddAdaptiveRateLimitHandler("sharepoint")`. A Graph client gets its estimator from `CreateDefaultHandlers`.
 
 </TabItem>
 </Tabs>
 
 These samples use `Microsoft.Graph` and `Azure.Identity`. Use the credential that fits your app.
 
+### The SharePoint defaults
+
+SharePoint gives each app 1,250 to 6,250 resource units per minute in a tenant, by the license count of the tenant. In 24 hours, it gives 1,200,000 to 6,000,000. `ForSharePoint()` and `SharePointRateLimiter.CreateOptions()` set these defaults:
+
+| Option | Default | Why |
+| --- | --- | --- |
+| `InitialUnitsPerMinute` | `1500` | Close to the budget of a small tenant, so that the first minutes cause few throttles. |
+| `MinUnitsPerMinute` | `200` | A `$batch` of 20 permission requests (100 units) waits 30 seconds at most, well within `MaxWait`. |
+| `MaxUnitsPerMinute` | `5625` | 90% of the per-minute budget of the largest tenants. The rate grows to it only when the server accepts it. |
+
+The other options keep the defaults of `AdaptiveRateLimiterOptions`.
+
+<Aside type="caution" title="The 24-hour budget">
+The 24-hour budget is lower than the per-minute budget for a full day. At 5,625 units per minute, the largest 24-hour budget runs out in about 18 hours. For a job that runs all day, set `MaxUnitsPerMinute` to the budget of your tenant.
+</Aside>
+
 ### Set the rates for your tenant
 
-The default `MaxUnitsPerMinute` is 5,625: 90% of the per-app limit of the largest tenant size. Set the rates to the limit of your tenant:
+Set the rates to the limit of your tenant:
 
 1. Find the per-app limit per minute for the license count of your tenant on the Microsoft page.
-2. Set `MaxUnitsPerMinute` below it, for example to 90% of it.
-3. Set `InitialUnitsPerMinute` and `MinUnitsPerMinute` at or below the maximum. The defaults are 1,500 and 200.
+2. Set `MaxUnitsPerMinute` below it, for example to 90% of it. For a job that runs all day, also keep it below the 24-hour limit divided by 1,440 minutes.
+3. Set `InitialUnitsPerMinute` and `MinUnitsPerMinute` at or below the maximum.
 4. If other apps or other processes use the same app ID, set the [instance count](/adaptive-rate-limiting-dotnet/guide/instance-count/), or lower the maximum.
 
 ```json title="appsettings.json"
@@ -157,7 +170,7 @@ var handlers = GraphClientHandlers.CreateDefaultHandlers(limiter, estimator);
 
 ## Throttled $batch responses
 
-Graph answers a `$batch` with 200, also when it throttles inner requests. The status of each inner request is in the body. `GraphBatchThrottleClassifier` reads the body of a successful `$batch` response:
+Graph answers a `$batch` with 200, also when it throttles inner requests. The status of each inner request is in the body. `GraphBatchThrottleClassifier` reads the body of a successful response to a `POST` to a `$batch` path. It also does this when the cost category is not `sharepoint.batch`, for example with a custom cost estimator. The body stays readable for the caller. The classifier uses these rules:
 
 - Each inner response with 429, or 503 with `Retry-After`, counts as one throttle. The limiter cuts the rate once, and the `ratelimit.adaptive.throttled` counter adds the number of throttled inner responses.
 - The longest inner `Retry-After` pauses the limiter.
