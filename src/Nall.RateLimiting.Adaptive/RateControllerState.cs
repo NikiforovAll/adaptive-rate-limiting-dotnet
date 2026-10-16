@@ -22,15 +22,23 @@ public readonly record struct RateControllerState
     public double MaxRate { get; init; }
 
     /// <summary>
-    /// The rate just before the last decrease. Before the first decrease, the initial rate.
+    /// The rate at the last decrease: the current rate, or <see cref="MeasuredRate"/> if it was
+    /// lower and not zero. Before the first decrease, the initial rate. In
+    /// <see cref="IRateController.OnThrottled"/>, the value for the decrease that is in progress.
     /// </summary>
     public double RateBeforeLastDecrease { get; init; }
 
     /// <summary>
-    /// The time since the last decrease. Before the first decrease, the time since the limiter
-    /// started.
+    /// The time since the last decrease, without the <c>Retry-After</c> pause after it. Zero
+    /// during the pause. Before the first decrease, the time since the limiter started.
     /// </summary>
     public TimeSpan SinceLastDecrease { get; init; }
+
+    /// <summary>
+    /// The measured send rate of this process: the units of the responses in half-second
+    /// periods, smoothed with a factor of 0.8. Zero until the first period ends.
+    /// </summary>
+    public double MeasuredRate { get; init; }
 
     /// <summary>
     /// The time since the controller last returned a rate from

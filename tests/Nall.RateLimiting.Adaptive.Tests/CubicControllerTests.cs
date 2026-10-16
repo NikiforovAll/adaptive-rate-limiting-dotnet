@@ -11,7 +11,12 @@ public sealed class CubicControllerTests
         _controller.OnThrottled(State(rate: 600)).ShouldBe(420, 1e-9);
 
     [Test]
-    public void OnThrottled_StopsAtMin() => _controller.OnThrottled(State(rate: 250)).ShouldBe(200);
+    public void OnThrottled_UsesTheRateAtTheDecrease() =>
+        _controller.OnThrottled(State(rate: 600, rateBeforeLastDecrease: 400)).ShouldBe(280, 1e-9);
+
+    [Test]
+    public void OnThrottled_StopsAtMin() =>
+        _controller.OnThrottled(State(rate: 250, rateBeforeLastDecrease: 250)).ShouldBe(200);
 
     [Test]
     public void OnSuccess_NoWait_DoesNotDecide() =>
@@ -50,6 +55,14 @@ public sealed class CubicControllerTests
         Success(State(rate: 550, sinceLastDecrease: 0.5)).ShouldBe(550);
 
     [Test]
+    public void OnSuccess_StopsAtTwiceTheMeasuredRate() =>
+        Success(State(sinceLastDecrease: s_k + 2, measuredRate: 300)).ShouldBe(600);
+
+    [Test]
+    public void OnSuccess_NoMeasuredRate_KeepsTheRate() =>
+        Success(State(sinceLastDecrease: s_k + 2, measuredRate: 0)).ShouldBe(420);
+
+    [Test]
     public void Constructor_BetaOutOfRange_Throws() =>
         Should.Throw<ArgumentOutOfRangeException>(() =>
             new CubicController(new CubicOptions { Beta = 1 })
@@ -68,7 +81,8 @@ public sealed class CubicControllerTests
         double rateBeforeLastDecrease = 600,
         double sinceLastDecrease = 1,
         bool waited = true,
-        int instances = 1
+        int instances = 1,
+        double measuredRate = 10_000
     ) =>
         new()
         {
@@ -77,6 +91,7 @@ public sealed class CubicControllerTests
             MaxRate = 1000 / (double)instances,
             RateBeforeLastDecrease = rateBeforeLastDecrease,
             SinceLastDecrease = TimeSpan.FromSeconds(sinceLastDecrease),
+            MeasuredRate = measuredRate / instances,
             SinceLastIncrease = TimeSpan.FromSeconds(1),
             Waited = waited,
             InstanceCount = instances,

@@ -2,19 +2,19 @@ namespace Nall.RateLimiting.Adaptive;
 
 /// <summary>
 /// CUBIC: a throttle multiplies the rate by <see cref="CubicOptions.Beta"/>; then the rate grows
-/// back on a cubic curve of the time since the throttle. The curve is flat near the rate that
-/// was throttled, and steep far from it.
+/// back on a cubic curve of the time since the <c>Retry-After</c> pause ended. The curve is flat
+/// near the rate that was throttled, and steep far from it.
 /// </summary>
 /// <remarks>
 /// <para>
-/// With W the rate before the last decrease, t the time since it, and C the scale constant:
+/// With W the rate at the last decrease, t the time since it, and C the scale constant:
 /// K = ∛(W × (1 − β) / C), and the rate is C × (t − K)³ + W. The rate is in units per second
-/// in the formula.
+/// in the formula. Growth is capped at two times the measured send rate.
 /// </para>
 /// <para>
-/// The formula and the defaults come from the AWS SDK adaptive retry mode (botocore
-/// <c>CubicCalculator</c>), which takes them from RFC 8312. Unlike the AWS SDK, W is the
-/// current rate, not a measured send rate, and the rate goes up only if requests had to wait.
+/// The formula, the cap and the defaults come from the AWS SDK adaptive retry mode (botocore
+/// <c>CubicCalculator</c> and <c>ClientRateLimiter</c>), which takes them from RFC 8312. Unlike
+/// the AWS SDK, the rate goes up only if requests had to wait.
 /// </para>
 /// </remarks>
 public sealed class CubicController : IRateController
@@ -37,7 +37,11 @@ public sealed class CubicController : IRateController
 
     /// <inheritdoc />
     public double OnThrottled(in RateControllerState state) =>
-        Math.Clamp(state.Rate * _beta, state.MinRate, Math.Max(state.MinRate, state.Rate));
+        Math.Clamp(
+            state.RateBeforeLastDecrease * _beta,
+            state.MinRate,
+            Math.Max(state.MinRate, state.Rate)
+        );
 
     /// <inheritdoc />
     public double? OnSuccess(in RateControllerState state)
@@ -58,6 +62,8 @@ public sealed class CubicController : IRateController
         var t = state.SinceLastDecrease.TotalSeconds;
         var cubic = ((scale * Math.Pow(t - k, 3)) + maxPerSecond) * 60;
 
-        return Math.Clamp(Math.Max(state.Rate, cubic), state.MinRate, state.MaxRate);
+        var next = Math.Min(cubic, 2 * state.MeasuredRate);
+
+        return Math.Clamp(Math.Max(state.Rate, next), state.MinRate, state.MaxRate);
     }
 }

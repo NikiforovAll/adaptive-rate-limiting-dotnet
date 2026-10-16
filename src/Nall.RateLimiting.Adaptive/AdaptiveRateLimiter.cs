@@ -24,6 +24,7 @@ public sealed class AdaptiveRateLimiter : IDisposable
     private readonly AdaptiveTokenBucket _bucket;
     private readonly AdaptiveRateLimiterMetrics.Instruments _metrics;
     private readonly List<IDisposable> _owned = [];
+    private readonly long _start;
     private AdaptiveRateLimiterOptions _options;
     private IRateController _controller;
     private IDisposable? _instanceSubscription;
@@ -33,6 +34,10 @@ public sealed class AdaptiveRateLimiter : IDisposable
     private double _rateBeforeLastDecrease;
     private long _lastIncrease;
     private long _lastDecrease;
+    private long _growthStart;
+    private double _measuredRate;
+    private double _sentUnits;
+    private double _sentPeriod;
     private bool _decreased;
     private bool _disposed;
 
@@ -80,6 +85,8 @@ public sealed class AdaptiveRateLimiter : IDisposable
         _rateBeforeLastDecrease = _rate;
         _lastIncrease = _time.GetTimestamp();
         _lastDecrease = _lastIncrease;
+        _growthStart = _lastIncrease;
+        _start = _lastIncrease;
         _bucket = new AdaptiveTokenBucket(
             BucketRate(_rate),
             BucketBurst(copy),
@@ -183,6 +190,11 @@ public sealed class AdaptiveRateLimiter : IDisposable
         ArgumentNullException.ThrowIfNull(response);
 
         var limited = cost.Units > 0 && Enabled;
+        if (limited)
+        {
+            RecordSent(cost.Units);
+        }
+
         var signal =
             limited && _customClassifier is { } classifier
                 ? await classifier
@@ -359,10 +371,12 @@ public sealed class AdaptiveRateLimiter : IDisposable
                 )
             )
             {
+                _rateBeforeLastDecrease =
+                    _measuredRate > 0 ? Math.Min(_rate, _measuredRate) : _rate;
                 var state = State(now);
                 _decreased = true;
-                _rateBeforeLastDecrease = _rate;
                 _lastDecrease = now;
+                _growthStart = now;
                 SetRate(Math.Min(_controller.OnThrottled(state), _rate));
             }
 
@@ -371,6 +385,28 @@ public sealed class AdaptiveRateLimiter : IDisposable
                 var pause = wait < _options.MaxPause ? wait : _options.MaxPause;
                 _bucket.Pause(pause);
                 _lastIncrease = now + (long)(pause.TotalSeconds * _time.TimestampFrequency);
+                _growthStart = Math.Max(_growthStart, _lastIncrease);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Updates the measured send rate, as the AWS SDK adaptive retry mode does (botocore
+    /// <c>ClientRateLimiter._update_measured_rate</c>), in units instead of requests.
+    /// </summary>
+    internal void RecordSent(int units)
+    {
+        lock (_lock)
+        {
+            var seconds = _time.GetElapsedTime(_start).TotalSeconds;
+            var period = Math.Floor(seconds * 2) / 2;
+            _sentUnits += units;
+            if (period > _sentPeriod)
+            {
+                var current = _sentUnits / (period - _sentPeriod) * 60;
+                _measuredRate = (current * 0.8) + (_measuredRate * 0.2);
+                _sentUnits = 0;
+                _sentPeriod = period;
             }
         }
     }
@@ -415,7 +451,9 @@ public sealed class AdaptiveRateLimiter : IDisposable
             MinRate = MinRate,
             MaxRate = MaxRate,
             RateBeforeLastDecrease = _rateBeforeLastDecrease,
-            SinceLastDecrease = _time.GetElapsedTime(_lastDecrease, now),
+            SinceLastDecrease =
+                now > _growthStart ? _time.GetElapsedTime(_growthStart, now) : TimeSpan.Zero,
+            MeasuredRate = _measuredRate,
             SinceLastIncrease = _time.GetElapsedTime(_lastIncrease, now),
             Waited = _bucket.HasWaited,
             InstanceCount = _instanceCount,
@@ -437,6 +475,7 @@ public sealed class AdaptiveRateLimiter : IDisposable
     {
         _instanceCount = instanceCount;
         _rateBeforeLastDecrease = _rateBeforeLastDecrease * previous / instanceCount;
+        _measuredRate = _measuredRate * previous / instanceCount;
         SetRate(_rate * previous / instanceCount);
     }
 

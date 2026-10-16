@@ -88,6 +88,7 @@ public sealed class RateControllerContractTests
             MaxRate = max,
             RateBeforeLastDecrease = min + (random.NextDouble() * (max - min)),
             SinceLastDecrease = TimeSpan.FromSeconds(random.NextDouble() * 120),
+            MeasuredRate = random.NextDouble() * 2 * max,
             SinceLastIncrease = TimeSpan.FromSeconds(random.NextDouble() * 30),
             Waited = random.NextDouble() < 0.5,
             InstanceCount = instances,
@@ -99,6 +100,7 @@ public sealed class RateControllerContractTests
         var bucketSize = (int)Math.Ceiling(limiter.UnitsPerMinute / 6);
         await Complete(limiter.WaitAsync(new RequestCost(bucketSize), CancellationToken.None));
         await Complete(limiter.WaitAsync(new RequestCost(1), CancellationToken.None));
+        limiter.RecordSent(bucketSize + 1);
 
         async Task Complete(ValueTask<long> wait)
         {

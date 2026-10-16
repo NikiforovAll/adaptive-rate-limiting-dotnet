@@ -47,12 +47,14 @@ With the defaults, the rate climbs by at most 720 units per minute in each minut
 
 CUBIC uses the window curve of [RFC 8312](https://www.rfc-editor.org/rfc/rfc8312), with the constants of the AWS SDK adaptive retry mode.
 
-- **On a throttle**, the rate is multiplied by `Cubic.Beta` (0.7), down to the minimum.
+- **On a throttle**, W is set to the current rate, or to the measured send rate if it is lower. The new rate is W × `Cubic.Beta` (0.7), down to the minimum.
 - **On a success**, if requests had to wait, the rate follows this curve. The curve is in units per second:
 
   > K = ∛(W × (1 − β) / C), rate = C × (t − K)³ + W
 
-  W is the rate before the last cut. t is the seconds since the last cut. C is `Cubic.ScaleConstant` (0.4 for the whole budget). The rate never goes down on a success, and it stays between the minimum and the maximum.
+  W is the rate at the last cut. t is the seconds since the last cut, without the `Retry-After` pause after it. C is `Cubic.ScaleConstant` (0.4 for the whole budget). The rate never goes above two times the measured send rate. The rate never goes down on a success, and it stays between the minimum and the maximum.
+
+  The measured send rate is the units of the responses per half-second period, smoothed with a factor of 0.8, as in the AWS SDK.
 
 CUBIC has no increase interval. Each success after a wait can raise the rate.
 
@@ -60,10 +62,10 @@ CUBIC has no increase interval. Each success after a wait can raise the rate.
 
 The curve is fast for rates of hundreds or thousands of units per minute. These are model numbers from the simulator: 2 instances, a hidden quota of 3,000 units per minute, a demand of 2,000 per instance, seed 42. The share of one instance has a maximum of 2,812.5 units per minute.
 
-- **After a cut**, K is about 4 seconds. One instance got back to its maximum 4.2 seconds after a cut in the median case (28 cuts in the first 5 minutes, from 4.2 to 14.4 seconds).
+- **After a cut**, K is about 4 seconds. In the first 5 minutes, one instance got back to its maximum after 9 cuts, 8.5 seconds after the cut in the median case (from 6.3 to 12.6 seconds).
 - **Before the first throttle**, the curve starts at the time the limiter was created, with W equal to the initial rate. The rate rose above the initial share after 5.3 seconds, and reached the maximum after 8.3 seconds. After that, the initial rate has no effect.
-- **After a pause**, t counts from the throttle, not from the end of the pause. So the first success after a long pause can move the rate far up the curve. After a pause of 13 seconds, the first success raised the rate from 1,969 to 2,813 units per minute (×1.43, the maximum) at once.
-- **Unlike the AWS SDK**, W is the current rate of the limiter, not a measured send rate, and the rate is not capped at twice the measured rate.
+- **After a pause**, t counts from the end of the pause. After a pause of 13 seconds, the first success raised the rate from 1,113 to 1,421 units per minute (×1.28).
+- **Unlike the AWS SDK**, the rate goes up only if requests had to wait, and the measured send rate counts units, not requests.
 
 So with the defaults, CUBIC spends most of its time at `MaxUnitsPerMinute`, and it finds the real limit by a throttle. Set `MaxUnitsPerMinute` close to, and below, the real limit when you use CUBIC.
 
@@ -108,7 +110,7 @@ Quota 3,000, 2 instances of 2,000.
 | No limiter | 2,901 | 100% | 64,931 | 0 | 9,003 | 0.0 s | 1 s |
 | Fixed rate | 1,516 | 52% | 4 | 20,919 | 0 | 70.4 s | 0 s |
 | AIMD | 2,625 | 90% | 56 | 11,278 | 0 | 44.0 s | 8 s |
-| CUBIC | 2,900 | 100% | 793 | 9,233 | 0 | 53.0 s | 27 s |
+| CUBIC | 2,890 | 100% | 531 | 9,306 | 0 | 48.5 s | 27 s |
 
 </TabItem>
 <TabItem label="Three instances">
@@ -120,7 +122,7 @@ Quota 3,000, 3 instances of 1,500.
 | No limiter | 2,900 | 100% | 80,540 | 0 | 12,980 | 0.0 s | 1 s |
 | Fixed rate | 1,516 | 52% | 3 | 24,544 | 0 | 99.7 s | 0 s |
 | AIMD | 2,665 | 92% | 52 | 14,679 | 0 | 81.5 s | 3 s |
-| CUBIC | 2,900 | 100% | 662 | 12,581 | 0 | 69.7 s | 20 s |
+| CUBIC | 2,900 | 100% | 379 | 12,623 | 0 | 72.8 s | 21 s |
 
 </TabItem>
 <TabItem label="Low demand">
@@ -132,7 +134,7 @@ Quota 3,000, 2 instances of 1,000. The demand is below the quota.
 | No limiter | 1,973 | 68% | 1,882 | 0 | 319 | 0.0 s | 0 s |
 | Fixed rate | 1,516 | 52% | 4 | 3,387 | 0 | 70.7 s | 0 s |
 | AIMD | 2,010 | 69% | 5 | 0 | 0 | 21.4 s | 0 s |
-| CUBIC | 2,010 | 69% | 236 | 0 | 0 | 12.1 s | 0 s |
+| CUBIC | 2,010 | 69% | 92 | 0 | 0 | 14.2 s | 0 s |
 
 </TabItem>
 <TabItem label="Large quota">
@@ -144,7 +146,7 @@ Quota 6,000, 2 instances of 4,000. The default maximum of 5,625 is below the quo
 | No limiter | 5,801 | 100% | 129,157 | 0 | 17,913 | 0.0 s | 1 s |
 | Fixed rate | 1,516 | 26% | 0 | 56,214 | 0 | 70.4 s | 0 s |
 | AIMD | 4,489 | 77% | 14 | 29,996 | 0 | 42.9 s | 23 s |
-| CUBIC | 5,424 | 93% | 20 | 21,657 | 0 | 19.1 s | 0 s |
+| CUBIC | 5,411 | 93% | 20 | 21,860 | 0 | 19.1 s | 0 s |
 
 </TabItem>
 <TabItem label="Max below quota">
@@ -154,7 +156,7 @@ Quota 3,000, 2 instances of 2,000, `MaxUnitsPerMinute` 2,700. The fixed rate and
 | Mode | Throughput | Share | 429s | Rejected | Gave up | p95 wait | Recovery |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | AIMD | 2,528 | 87% | 10 | 12,097 | 0 | 45.9 s | 23 s |
-| CUBIC | 2,626 | 91% | 7 | 11,275 | 0 | 40.6 s | 0 s |
+| CUBIC | 2,627 | 91% | 6 | 11,217 | 0 | 40.6 s | 0 s |
 
 </TabItem>
 </Tabs>
@@ -172,7 +174,7 @@ To get these numbers without a browser, run `npm run simulate` in the `docs` fol
 | You need a different rule | Write an `IRateController`. |
 
 <Aside type="caution">
-With the defaults, CUBIC goes to `MaxUnitsPerMinute` within seconds, before the first throttle and after each cut. If the maximum is far above the real limit, expect regular 429s. In the default scenario above, CUBIC got 793 429s and AIMD got 56.
+With the defaults, CUBIC goes to `MaxUnitsPerMinute` within seconds before the first throttle, and often again within seconds after a cut. If the maximum is far above the real limit, expect regular 429s. In the default scenario above, CUBIC got 531 429s and AIMD got 56.
 </Aside>
 
 ## Write your own controller

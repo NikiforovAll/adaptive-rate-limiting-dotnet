@@ -41,9 +41,11 @@
  *   aimdController.onSuccess            AimdController.OnSuccess (IncreaseInterval, Waited,
  *                                       IncreaseStep / InstanceCount)
  *   cubicController.onThrottled         CubicController.OnThrottled
- *   cubicController.onSuccess           CubicController.OnSuccess (Waited, MaxRate)
+ *   cubicController.onSuccess           CubicController.OnSuccess (Waited, MaxRate,
+ *                                       2 x MeasuredRate)
  *   cubicIncrease                       CubicController.OnSuccess cubic curve: K and
  *                                       C x (t - K)^3 + W, with t = SinceLastDecrease
+ *   AdaptiveRateLimiter.recordSent      AdaptiveRateLimiter.RecordSent
  *
  * Not modeled: Enabled = false, UpdateOptions, metrics, custom classifiers and estimators.
  * The server, the client retry handler and the "no limiter" and "fixed rate" modes are part
@@ -230,7 +232,7 @@ export function cubicController(options = DEFAULT_OPTIONS.cubic) {
 	const { beta, scaleConstant } = { ...DEFAULT_OPTIONS.cubic, ...options };
 	return {
 		name: 'cubic',
-		onThrottled: (s) => clamp(s.rate * beta, s.minRate, Math.max(s.minRate, s.rate)),
+		onThrottled: (s) => clamp(s.rateBeforeLastDecrease * beta, s.minRate, Math.max(s.minRate, s.rate)),
 		onSuccess(s) {
 			if (!s.waited) {
 				return null;
@@ -238,7 +240,8 @@ export function cubicController(options = DEFAULT_OPTIONS.cubic) {
 			if (s.rate >= s.maxRate) {
 				return s.maxRate;
 			}
-			return clamp(Math.max(s.rate, cubicIncrease(s, beta, scaleConstant)), s.minRate, s.maxRate);
+			const next = Math.min(cubicIncrease(s, beta, scaleConstant), 2 * s.measuredRate);
+			return clamp(Math.max(s.rate, next), s.minRate, s.maxRate);
 		},
 	};
 }
@@ -260,7 +263,12 @@ export class AdaptiveRateLimiter {
 		this.rateBeforeLastDecrease = this.rate;
 		this.lastIncrease = now;
 		this.lastDecrease = now;
+		this.growthStart = now;
 		this.decreased = false;
+		this.measuredRate = 0;
+		this.sentUnits = 0;
+		this.start = now;
+		this.sentBucket = 0;
 		this.bucket = new AdaptiveTokenBucket(
 			bucketRate(this.rate),
 			this.options.burst > 0 ? this.options.burst : 1,
@@ -299,6 +307,7 @@ export class AdaptiveRateLimiter {
 		if (cost <= 0) {
 			return;
 		}
+		this.recordSent(cost, now);
 		if (isThrottled(status, retryAfter)) {
 			this.onThrottled(now, retryAfter, sentAt);
 		} else if (status < 500) {
@@ -314,10 +323,11 @@ export class AdaptiveRateLimiter {
 			!this.decreased ||
 			(now - this.lastDecrease >= this.options.decreaseCooldown && (sentAt ?? now) >= this.lastDecrease)
 		) {
+			this.rateBeforeLastDecrease = this.measuredRate > 0 ? Math.min(this.rate, this.measuredRate) : this.rate;
 			const state = this.state(now);
 			this.decreased = true;
-			this.rateBeforeLastDecrease = this.rate;
 			this.lastDecrease = now;
+			this.growthStart = now;
 			this.setRate(Math.min(this.controller.onThrottled(state), this.rate), now);
 		}
 
@@ -325,6 +335,19 @@ export class AdaptiveRateLimiter {
 			const pause = Math.min(retryAfter, this.options.maxPause);
 			this.bucket.pause(pause, now);
 			this.lastIncrease = now + pause;
+			this.growthStart = Math.max(this.growthStart, now + pause);
+		}
+	}
+
+	/** The botocore measured send rate: an average over half-second buckets, smoothing 0.8. */
+	recordSent(units, now) {
+		const bucket = Math.floor((now - this.start) * 2) / 2;
+		this.sentUnits += units;
+		if (bucket > this.sentBucket) {
+			const current = (this.sentUnits / (bucket - this.sentBucket)) * 60;
+			this.measuredRate = current * 0.8 + this.measuredRate * 0.2;
+			this.sentUnits = 0;
+			this.sentBucket = bucket;
 		}
 	}
 
@@ -348,6 +371,7 @@ export class AdaptiveRateLimiter {
 		}
 		this.instanceCount = instanceCount;
 		this.rateBeforeLastDecrease = (this.rateBeforeLastDecrease * previous) / instanceCount;
+		this.measuredRate = (this.measuredRate * previous) / instanceCount;
 		this.setRate((this.rate * previous) / instanceCount, now);
 	}
 
@@ -367,7 +391,8 @@ export class AdaptiveRateLimiter {
 			minRate: this.minRate,
 			maxRate: this.maxRate,
 			rateBeforeLastDecrease: this.rateBeforeLastDecrease,
-			sinceLastDecrease: now - this.lastDecrease,
+			sinceLastDecrease: Math.max(0, now - this.growthStart),
+			measuredRate: this.measuredRate,
 			sinceLastIncrease: now - this.lastIncrease,
 			waited: this.bucket.waited,
 			instanceCount: this.instanceCount,

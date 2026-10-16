@@ -75,7 +75,7 @@ await limiter.OnResponseAsync(response, cost, sentAt, cancellationToken);
 Select the controller with `Controller`, or give your own `IRateController` with `WithController<T>()`.
 
 - **AIMD** (default): on a throttle, the rate is multiplied by `Aimd.DecreaseFactor` (0.7). At most once per `Aimd.IncreaseInterval` (10 s), a success raises it by `Aimd.IncreaseStep` (120 units per minute). Slow and predictable.
-- **CUBIC**: the rate follows the CUBIC window curve ([RFC 8312](https://www.rfc-editor.org/rfc/rfc8312)), as in the [AWS SDK adaptive retry mode](https://github.com/boto/botocore/blob/develop/botocore/retries/throttling.py). On a throttle, the rate is multiplied by `Cubic.Beta` (0.7). Then it grows fast back to the rate before the throttle, stays near it, and then grows fast again. `Cubic.ScaleConstant` (0.4) sets how fast.
+- **CUBIC**: the rate follows the CUBIC window curve ([RFC 8312](https://www.rfc-editor.org/rfc/rfc8312)), as in the [AWS SDK adaptive retry mode](https://github.com/boto/botocore/blob/develop/botocore/retries/throttling.py). On a throttle, the rate, or the measured send rate if it is lower, is multiplied by `Cubic.Beta` (0.7). After the `Retry-After` pause, the rate grows fast back to that rate, stays near it, and then grows fast again, up to two times the measured send rate. `Cubic.ScaleConstant` (0.4) sets how fast.
 
 A controller raises the rate only after requests had to wait, so the rate does not grow while the client sends less than the limit.
 

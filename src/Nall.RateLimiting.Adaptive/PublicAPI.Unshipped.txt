@@ -119,6 +119,8 @@ Nall.RateLimiting.Adaptive.RateControllerState.InstanceCount.get -> int
 Nall.RateLimiting.Adaptive.RateControllerState.InstanceCount.init -> void
 Nall.RateLimiting.Adaptive.RateControllerState.MaxRate.get -> double
 Nall.RateLimiting.Adaptive.RateControllerState.MaxRate.init -> void
+Nall.RateLimiting.Adaptive.RateControllerState.MeasuredRate.get -> double
+Nall.RateLimiting.Adaptive.RateControllerState.MeasuredRate.init -> void
 Nall.RateLimiting.Adaptive.RateControllerState.MinRate.get -> double
 Nall.RateLimiting.Adaptive.RateControllerState.MinRate.init -> void
 Nall.RateLimiting.Adaptive.RateControllerState.Rate.get -> double
