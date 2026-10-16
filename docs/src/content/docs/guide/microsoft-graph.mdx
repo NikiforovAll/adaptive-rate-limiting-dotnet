@@ -1,0 +1,194 @@
+---
+title: Microsoft Graph
+description: Resource-unit costs, $batch, the Kiota handler order and CSOM.
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The package `Nall.RateLimiting.Adaptive.MicrosoftGraph` connects the limiter to the Microsoft Graph SDK and to SharePoint CSOM. It counts the SharePoint resource units of each request, reads throttled inner responses of a `$batch`, and puts the limit handler in the right place of the Graph handler pipeline.
+
+```bash
+dotnet add package Nall.RateLimiting.Adaptive.MicrosoftGraph
+```
+
+## The SharePoint budget
+
+The facts in this section come from [Avoid getting throttled or blocked in SharePoint Online](https://learn.microsoft.com/en-us/sharepoint/dev/general-development/how-to-avoid-getting-throttled-or-blocked-in-sharepoint-online) on Microsoft Learn.
+
+- SharePoint Online limits each application in a tenant by resource units (RU) per minute and per 24 hours. The limit depends on the number of licenses of the tenant. Every request of the application counts: Microsoft Graph, CSOM and REST.
+- A throttled request gets HTTP 429 or 503, with a `Retry-After` header. Throttled requests also count toward the limits.
+- Microsoft Graph requests have a fixed cost: 1 RU for a single item, a delta with a token, or a file download; 2 RU for a multi-item query or a delta without a token, and for create, update, delete and upload; 5 RU for permission operations, including `$expand=permissions`.
+- The requests in a `$batch` are counted one by one.
+- CSOM and REST have no fixed cost, and they usually cost more than Graph.
+
+Read the page for the limits per tenant size. Microsoft can change the limits and the costs.
+
+## Create a Graph client
+
+<Tabs syncKey="di">
+<TabItem label="Without dependency injection">
+
+```csharp title="Program.cs"
+var options = SharePointRateLimiter.CreateOptions();
+options.InitialUnitsPerMinute = 600;
+options.MaxUnitsPerMinute = 1100;
+
+var limiter = SharePointRateLimiter.Create("sharepoint", options);
+var handlers = GraphClientHandlers.CreateDefaultHandlers(limiter);
+var httpClient = GraphClientFactory.Create(handlers);
+
+var credential = new ClientSecretCredential("tenant-id", "client-id", "client-secret");
+var graph = new GraphServiceClient(httpClient, credential);
+```
+
+`SharePointRateLimiter.CreateOptions` gives options with the [SharePoint defaults](#the-sharepoint-defaults). `SharePointRateLimiter.Create` makes a limiter with the `$batch` throttle classifier. If you do not give options, it uses `CreateOptions()`. `GraphClientHandlers.CreateDefaultHandlers` makes the default Graph handlers, and adds an `AdaptiveRateLimitHandler` with the SharePoint cost estimator.
+
+</TabItem>
+<TabItem label="With dependency injection">
+
+```csharp title="Program.cs"
+builder.Services.AddAdaptiveRateLimiter("sharepoint").ForSharePoint();
+
+builder.Services.AddSingleton(sp =>
+{
+    var limiter = sp.GetRequiredKeyedService<AdaptiveRateLimiter>("sharepoint");
+    var handlers = GraphClientHandlers.CreateDefaultHandlers(limiter);
+    var httpClient = GraphClientFactory.Create(handlers);
+    return new GraphServiceClient(httpClient, new DefaultAzureCredential());
+});
+```
+
+`ForSharePoint()` sets the SharePoint cost estimator, the `$batch` throttle classifier and the [SharePoint defaults](#the-sharepoint-defaults) on the named limiter. The defaults apply before the configuration binds, so the configuration section and a configure delegate can change them. The estimator applies to clients with `AddAdaptiveRateLimitHandler("sharepoint")`. A Graph client gets its estimator from `CreateDefaultHandlers`.
+
+</TabItem>
+</Tabs>
+
+These samples use `Microsoft.Graph` and `Azure.Identity`. Use the credential that fits your app.
+
+### The SharePoint defaults
+
+SharePoint gives each app 1,250 to 6,250 resource units per minute in a tenant, by the license count of the tenant. In 24 hours, it gives 1,200,000 to 6,000,000. `ForSharePoint()` and `SharePointRateLimiter.CreateOptions()` set these defaults:
+
+| Option | Default | Why |
+| --- | --- | --- |
+| `InitialUnitsPerMinute` | `1500` | Close to the budget of a small tenant, so that the first minutes cause few throttles. |
+| `MinUnitsPerMinute` | `200` | A `$batch` of 20 permission requests (100 units) waits 30 seconds at most, well within `MaxWait`. |
+| `MaxUnitsPerMinute` | `5625` | 90% of the per-minute budget of the largest tenants. The rate grows to it only when the server accepts it. |
+
+The other options keep the defaults of `AdaptiveRateLimiterOptions`.
+
+<Aside type="caution" title="The 24-hour budget">
+The 24-hour budget is lower than the per-minute budget for a full day. At 5,625 units per minute, the largest 24-hour budget runs out in about 18 hours. For a job that runs all day, set `MaxUnitsPerMinute` to the budget of your tenant.
+</Aside>
+
+### Set the rates for your tenant
+
+Set the rates to the limit of your tenant:
+
+1. Find the per-app limit per minute for the license count of your tenant on the Microsoft page.
+2. Set `MaxUnitsPerMinute` below it, for example to 90% of it. For a job that runs all day, also keep it below the 24-hour limit divided by 1,440 minutes.
+3. Set `InitialUnitsPerMinute` and `MinUnitsPerMinute` at or below the maximum.
+4. If other apps or other processes use the same app ID, set the [instance count](/adaptive-rate-limiting-dotnet/guide/instance-count/), or lower the maximum.
+
+```json title="appsettings.json"
+{
+  "AdaptiveRateLimiting": {
+    "Limiters": {
+      "sharepoint": {
+        "InitialUnitsPerMinute": 600,
+        "MinUnitsPerMinute": 100,
+        "MaxUnitsPerMinute": 1100
+      }
+    }
+  }
+}
+```
+
+## Handler order
+
+The Kiota retry handler of the Graph SDK retries throttled responses, and waits for `Retry-After`. The limit handler must be inside it, so that each retry waits for its units and is counted.
+
+```text
+GraphServiceClient
+ └─ ... default Graph handlers
+     └─ RetryHandler            retries throttled responses
+         └─ AdaptiveRateLimitHandler   waits for units, reads each response
+             └─ ... the other handlers, then the network
+```
+
+`GraphClientHandlers.InsertRateLimitHandler` puts the handler right after the first `RetryHandler`, or at the end if there is none. Use it with a handler list of your own:
+
+```csharp
+var handlers = GraphClientFactory.CreateDefaultHandlers();
+GraphClientHandlers.InsertRateLimitHandler(
+    handlers,
+    new AdaptiveRateLimitHandler(limiter, new SharePointResourceUnitEstimator())
+);
+```
+
+## How requests are counted
+
+`SharePointResourceUnitEstimator` gives each request its RU cost from the method and the URL:
+
+| Request | Cost | Category |
+| --- | --- | --- |
+| A path without a `sites`, `drives`, `drive` or `shares` segment, for example `/me` | 0, not limited | `graph` |
+| A `permissions` segment, or `permissions` in `$expand` or `$select` | `Permissions` (5) | `sharepoint` |
+| Any method other than `GET` and `HEAD` | `List` (2) | `sharepoint` |
+| `delta` with a `token` or `deltatoken` | `Get` (1) | `sharepoint` |
+| `delta` without a token | `List` (2) | `sharepoint` |
+| Last segment `children`, `items`, `lists`, `drives`, `sites`, `versions`, `columns` or `contentTypes` | `List` (2) | `sharepoint` |
+| Any other SharePoint request | `Get` (1) | `sharepoint` |
+| `POST .../$batch` | The sum of the inner requests, with the same rules | `sharepoint.batch` |
+
+A `$batch` body that is not valid JSON, or has no `requests`, costs `Get`. The estimator reads the body of a `$batch` and leaves it readable. The categories are on the `ratelimit.category` tag of the [metrics](/adaptive-rate-limiting-dotnet/guide/metrics/), and in the constants `SharePointCategory`, `BatchCategory` and `GraphCategory`.
+
+### Change the costs
+
+The costs are in `SharePointResourceUnitCosts`:
+
+| Property | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `Get` | `int` | `1` | A request that reads one resource, such as one drive item. |
+| `List` | `int` | `2` | A request that reads a collection, such as `children` or a delta without a token, and each write. |
+| `Permissions` | `int` | `5` | A request that reads or changes permissions. |
+
+```csharp
+var costs = new SharePointResourceUnitCosts { Permissions = 10 };
+
+builder.Services.AddAdaptiveRateLimiter("sharepoint").ForSharePoint(costs);
+```
+
+For a Graph client, pass the estimator to `CreateDefaultHandlers`:
+
+```csharp
+var estimator = new SharePointResourceUnitEstimator(
+    new SharePointResourceUnitCosts { Permissions = 10 }
+);
+var handlers = GraphClientHandlers.CreateDefaultHandlers(limiter, estimator);
+```
+
+## Throttled $batch responses
+
+Graph answers a `$batch` with 200, also when it throttles inner requests. The status of each inner request is in the body. `GraphBatchThrottleClassifier` reads the body of a successful response to a `POST` to a `$batch` path. It also does this when the cost category is not `sharepoint.batch`, for example with a custom cost estimator. The body stays readable for the caller. The classifier uses these rules:
+
+- Each inner response with 429, or 503 with `Retry-After`, counts as one throttle. The limiter cuts the rate once, and the `ratelimit.adaptive.throttled` counter adds the number of throttled inner responses.
+- The longest inner `Retry-After` pauses the limiter.
+- A body that is not valid JSON, or has no `responses`, counts as a success.
+
+The retry handler sees 200 and does not send the batch again. Send the throttled inner requests again in your code.
+
+## CSOM
+
+CSOM calls use the same app budget as Graph. `SharePointCsom.CreateHandler` makes a handler pipeline for CSOM that uses the same limiter:
+
+```csharp
+var handler = SharePointCsom.CreateHandler(limiter);
+var httpClient = new HttpClient(handler);
+```
+
+The pipeline is the Kiota `RetryHandler` (up to 10 retries), then the limit handler, then a `SocketsHttpHandler` without cookies. Give it to the `HttpClient` of your CSOM client in place of its own retry handler. Each call costs `SharePointCsom.DefaultCallUnits` (2) units with the category `csom`, because the body of a CSOM call does not tell its real cost. Pass `callUnits` to change it. The `HttpClient` disposes the pipeline, but not the limiter.
+
+<Aside type="caution">
+Microsoft says that CSOM usually costs more than Graph for the same work. If the limiter gets regular throttles while CSOM calls run, raise `callUnits`.
+</Aside>

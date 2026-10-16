@@ -1,0 +1,192 @@
+#nullable enable
+const Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterServiceCollectionExtensions.LimitersSection = "AdaptiveRateLimiting:Limiters" -> string!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.Name.get -> string!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.Services.get -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithController(Nall.RateLimiting.Adaptive.IRateController! controller) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithController<T>() -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithDefaults(System.Action<Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions!>! defaults) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithCostEstimator(Nall.RateLimiting.Adaptive.IRequestCostEstimator! estimator) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithCostEstimator<T>() -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithInstanceCount(Nall.RateLimiting.Adaptive.IInstanceCountSource! source) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithInstanceCount<T>() -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithThrottleClassifier(Nall.RateLimiting.Adaptive.IThrottleClassifier! classifier) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithThrottleClassifier<T>() -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterServiceCollectionExtensions
+static Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterServiceCollectionExtensions.AddAdaptiveRateLimiter(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+static Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterServiceCollectionExtensions.AddAdaptiveRateLimiter(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, Microsoft.Extensions.Configuration.IConfiguration! configuration) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+static Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterServiceCollectionExtensions.AddAdaptiveRateLimiter(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+static Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterServiceCollectionExtensions.AddAdaptiveRateLimitHandler(this Microsoft.Extensions.DependencyInjection.IHttpClientBuilder! builder, string! name) -> Microsoft.Extensions.DependencyInjection.IHttpClientBuilder!
+Nall.RateLimiting.Adaptive.AdaptiveTokenBucket
+Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.AdaptiveTokenBucket(double tokensPerSecond, System.TimeSpan burst, int queueLimit, System.TimeProvider? timeProvider = null) -> void
+Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.Pause(System.TimeSpan duration) -> void
+Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.ResetWaited() -> bool
+Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.SetRate(double tokensPerSecond) -> void
+override Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.GetStatistics() -> System.Threading.RateLimiting.RateLimiterStatistics?
+override Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.IdleDuration.get -> System.TimeSpan?
+~override Nall.RateLimiting.Adaptive.RateControllerState.Equals(object obj) -> bool
+~override Nall.RateLimiting.Adaptive.RateControllerState.ToString() -> string
+~override Nall.RateLimiting.Adaptive.RequestCost.Equals(object obj) -> bool
+~override Nall.RateLimiting.Adaptive.RequestCost.ToString() -> string
+~override Nall.RateLimiting.Adaptive.ThrottleSignal.Equals(object obj) -> bool
+~override Nall.RateLimiting.Adaptive.ThrottleSignal.ToString() -> string
+const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.CategoryTag = "ratelimit.category" -> string!
+const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.InstancesInstrument = "ratelimit.adaptive.instances" -> string!
+const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.LimiterTag = "ratelimit.limiter" -> string!
+const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.MeterName = "Nall.RateLimiting.Adaptive" -> string!
+const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.QueueInstrument = "ratelimit.adaptive.queue" -> string!
+const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.RateInstrument = "ratelimit.adaptive.rate" -> string!
+const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.ReasonTag = "ratelimit.reason" -> string!
+const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.RejectedInstrument = "ratelimit.adaptive.rejected" -> string!
+const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.RetryAfterTag = "ratelimit.retry_after" -> string!
+const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.ThrottledInstrument = "ratelimit.adaptive.throttled" -> string!
+const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.UnitsInstrument = "ratelimit.adaptive.units" -> string!
+const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.WaitInstrument = "ratelimit.adaptive.wait" -> string!
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.AdaptiveRateLimiter(string! name, Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions! options, Nall.RateLimiting.Adaptive.IRateController? controller = null, Nall.RateLimiting.Adaptive.IThrottleClassifier? throttleClassifier = null, System.TimeProvider? timeProvider = null, System.Diagnostics.Metrics.IMeterFactory? meterFactory = null, Microsoft.Extensions.Logging.ILogger? logger = null) -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.Dispose() -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.Enabled.get -> bool
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.InstanceCount.get -> int
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.Name.get -> string!
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.OnResponseAsync(System.Net.Http.HttpResponseMessage! response, Nall.RateLimiting.Adaptive.RequestCost cost, long sentAt, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.SetInstanceCount(int instanceCount) -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.UnitsPerMinute.get -> double
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.UpdateOptions(Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions! options) -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.UseInstanceCount(Nall.RateLimiting.Adaptive.IInstanceCountSource! source) -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.WaitAsync(Nall.RateLimiting.Adaptive.RequestCost cost, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<long>
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.AdaptiveRateLimiterOptions() -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.Aimd.get -> Nall.RateLimiting.Adaptive.AimdOptions!
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.Aimd.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.Burst.get -> System.TimeSpan
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.Burst.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.Controller.get -> Nall.RateLimiting.Adaptive.RateControllerType
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.Controller.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.DecreaseCooldown.get -> System.TimeSpan
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.DecreaseCooldown.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.Enabled.get -> bool
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.Enabled.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.InitialUnitsPerMinute.get -> double
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.InitialUnitsPerMinute.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.InstanceCount.get -> int
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.InstanceCount.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.MaxPause.get -> System.TimeSpan
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.MaxPause.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.MaxRequestUnits.get -> int
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.MaxRequestUnits.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.MaxUnitsPerMinute.get -> double
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.MaxUnitsPerMinute.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.MaxWait.get -> System.TimeSpan
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.MaxWait.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.MinUnitsPerMinute.get -> double
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.MinUnitsPerMinute.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.QueueLimit.get -> int
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.QueueLimit.set -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimitHandler
+Nall.RateLimiting.Adaptive.AdaptiveRateLimitHandler.AdaptiveRateLimitHandler(Nall.RateLimiting.Adaptive.AdaptiveRateLimiter! limiter, Nall.RateLimiting.Adaptive.IRequestCostEstimator? costEstimator = null) -> void
+Nall.RateLimiting.Adaptive.AimdController
+Nall.RateLimiting.Adaptive.AimdController.AimdController(Nall.RateLimiting.Adaptive.AimdOptions? options = null) -> void
+Nall.RateLimiting.Adaptive.AimdController.OnSuccess(in Nall.RateLimiting.Adaptive.RateControllerState state) -> double?
+Nall.RateLimiting.Adaptive.AimdController.OnThrottled(in Nall.RateLimiting.Adaptive.RateControllerState state) -> double
+Nall.RateLimiting.Adaptive.AimdOptions
+Nall.RateLimiting.Adaptive.AimdOptions.AimdOptions() -> void
+Nall.RateLimiting.Adaptive.AimdOptions.DecreaseFactor.get -> double
+Nall.RateLimiting.Adaptive.AimdOptions.DecreaseFactor.set -> void
+Nall.RateLimiting.Adaptive.AimdOptions.IncreaseInterval.get -> System.TimeSpan
+Nall.RateLimiting.Adaptive.AimdOptions.IncreaseInterval.set -> void
+Nall.RateLimiting.Adaptive.AimdOptions.IncreaseStep.get -> double
+Nall.RateLimiting.Adaptive.AimdOptions.IncreaseStep.set -> void
+Nall.RateLimiting.Adaptive.FixedCostEstimator
+Nall.RateLimiting.Adaptive.FixedCostEstimator.Cost.get -> Nall.RateLimiting.Adaptive.RequestCost
+Nall.RateLimiting.Adaptive.FixedCostEstimator.EstimateAsync(System.Net.Http.HttpRequestMessage! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Nall.RateLimiting.Adaptive.RequestCost>
+Nall.RateLimiting.Adaptive.FixedCostEstimator.FixedCostEstimator(int units, string? category = null) -> void
+Nall.RateLimiting.Adaptive.HttpThrottleClassifier
+Nall.RateLimiting.Adaptive.HttpThrottleClassifier.Classify(System.Net.Http.HttpResponseMessage! response) -> Nall.RateLimiting.Adaptive.ThrottleSignal
+Nall.RateLimiting.Adaptive.HttpThrottleClassifier.ClassifyAsync(System.Net.Http.HttpResponseMessage! response, Nall.RateLimiting.Adaptive.RequestCost cost, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Nall.RateLimiting.Adaptive.ThrottleSignal>
+Nall.RateLimiting.Adaptive.HttpThrottleClassifier.HttpThrottleClassifier(System.TimeProvider? timeProvider = null) -> void
+Nall.RateLimiting.Adaptive.IInstanceCountSource
+Nall.RateLimiting.Adaptive.IInstanceCountSource.Current.get -> int
+Nall.RateLimiting.Adaptive.IInstanceCountSource.OnChange(System.Action<int>! listener) -> System.IDisposable?
+Nall.RateLimiting.Adaptive.IRateController
+Nall.RateLimiting.Adaptive.IRateController.OnSuccess(in Nall.RateLimiting.Adaptive.RateControllerState state) -> double?
+Nall.RateLimiting.Adaptive.IRateController.OnThrottled(in Nall.RateLimiting.Adaptive.RateControllerState state) -> double
+Nall.RateLimiting.Adaptive.IRequestCostEstimator
+Nall.RateLimiting.Adaptive.IRequestCostEstimator.EstimateAsync(System.Net.Http.HttpRequestMessage! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Nall.RateLimiting.Adaptive.RequestCost>
+Nall.RateLimiting.Adaptive.IThrottleClassifier
+Nall.RateLimiting.Adaptive.IThrottleClassifier.ClassifyAsync(System.Net.Http.HttpResponseMessage! response, Nall.RateLimiting.Adaptive.RequestCost cost, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Nall.RateLimiting.Adaptive.ThrottleSignal>
+Nall.RateLimiting.Adaptive.RateControllerState
+Nall.RateLimiting.Adaptive.RateControllerState.Equals(Nall.RateLimiting.Adaptive.RateControllerState other) -> bool
+Nall.RateLimiting.Adaptive.RateControllerState.InstanceCount.get -> int
+Nall.RateLimiting.Adaptive.RateControllerState.InstanceCount.init -> void
+Nall.RateLimiting.Adaptive.RateControllerState.MaxRate.get -> double
+Nall.RateLimiting.Adaptive.RateControllerState.MaxRate.init -> void
+Nall.RateLimiting.Adaptive.RateControllerState.MeasuredRate.get -> double
+Nall.RateLimiting.Adaptive.RateControllerState.MeasuredRate.init -> void
+Nall.RateLimiting.Adaptive.RateControllerState.MinRate.get -> double
+Nall.RateLimiting.Adaptive.RateControllerState.MinRate.init -> void
+Nall.RateLimiting.Adaptive.RateControllerState.Rate.get -> double
+Nall.RateLimiting.Adaptive.RateControllerState.Rate.init -> void
+Nall.RateLimiting.Adaptive.RateControllerState.RateBeforeLastDecrease.get -> double
+Nall.RateLimiting.Adaptive.RateControllerState.RateBeforeLastDecrease.init -> void
+Nall.RateLimiting.Adaptive.RateControllerState.RateControllerState() -> void
+Nall.RateLimiting.Adaptive.RateControllerState.SinceLastDecrease.get -> System.TimeSpan
+Nall.RateLimiting.Adaptive.RateControllerState.SinceLastDecrease.init -> void
+Nall.RateLimiting.Adaptive.RateControllerState.SinceLastIncrease.get -> System.TimeSpan
+Nall.RateLimiting.Adaptive.RateControllerState.SinceLastIncrease.init -> void
+Nall.RateLimiting.Adaptive.RateControllerState.Waited.get -> bool
+Nall.RateLimiting.Adaptive.RateControllerState.Waited.init -> void
+Nall.RateLimiting.Adaptive.RateControllerType
+Nall.RateLimiting.Adaptive.RateControllerType.Aimd = 0 -> Nall.RateLimiting.Adaptive.RateControllerType
+Nall.RateLimiting.Adaptive.RateControllerType.Cubic = 1 -> Nall.RateLimiting.Adaptive.RateControllerType
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.Cubic.get -> Nall.RateLimiting.Adaptive.CubicOptions!
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.Cubic.set -> void
+Nall.RateLimiting.Adaptive.CubicController
+Nall.RateLimiting.Adaptive.CubicController.CubicController(Nall.RateLimiting.Adaptive.CubicOptions? options = null) -> void
+Nall.RateLimiting.Adaptive.CubicController.OnSuccess(in Nall.RateLimiting.Adaptive.RateControllerState state) -> double?
+Nall.RateLimiting.Adaptive.CubicController.OnThrottled(in Nall.RateLimiting.Adaptive.RateControllerState state) -> double
+Nall.RateLimiting.Adaptive.CubicOptions
+Nall.RateLimiting.Adaptive.CubicOptions.Beta.get -> double
+Nall.RateLimiting.Adaptive.CubicOptions.Beta.set -> void
+Nall.RateLimiting.Adaptive.CubicOptions.CubicOptions() -> void
+Nall.RateLimiting.Adaptive.CubicOptions.ScaleConstant.get -> double
+Nall.RateLimiting.Adaptive.CubicOptions.ScaleConstant.set -> void
+Nall.RateLimiting.Adaptive.RateLimitRejectedException
+Nall.RateLimiting.Adaptive.RateLimitRejectedException.RateLimitRejectedException() -> void
+Nall.RateLimiting.Adaptive.RateLimitRejectedException.RateLimitRejectedException(string! message) -> void
+Nall.RateLimiting.Adaptive.RateLimitRejectedException.RateLimitRejectedException(string! message, System.Exception! innerException) -> void
+Nall.RateLimiting.Adaptive.RequestCost
+Nall.RateLimiting.Adaptive.RequestCost.Category.get -> string?
+Nall.RateLimiting.Adaptive.RequestCost.Category.init -> void
+Nall.RateLimiting.Adaptive.RequestCost.Deconstruct(out int Units, out string? Category) -> void
+Nall.RateLimiting.Adaptive.RequestCost.Equals(Nall.RateLimiting.Adaptive.RequestCost other) -> bool
+Nall.RateLimiting.Adaptive.RequestCost.RequestCost() -> void
+Nall.RateLimiting.Adaptive.RequestCost.RequestCost(int Units, string? Category = null) -> void
+Nall.RateLimiting.Adaptive.RequestCost.Units.get -> int
+Nall.RateLimiting.Adaptive.RequestCost.Units.init -> void
+Nall.RateLimiting.Adaptive.StaticInstanceCountSource
+Nall.RateLimiting.Adaptive.StaticInstanceCountSource.Current.get -> int
+Nall.RateLimiting.Adaptive.StaticInstanceCountSource.OnChange(System.Action<int>! listener) -> System.IDisposable?
+Nall.RateLimiting.Adaptive.StaticInstanceCountSource.StaticInstanceCountSource(int count) -> void
+Nall.RateLimiting.Adaptive.ThrottleSignal
+Nall.RateLimiting.Adaptive.ThrottleSignal.Deconstruct(out int StatusCode, out System.TimeSpan? RetryAfter, out int ThrottledCount) -> void
+Nall.RateLimiting.Adaptive.ThrottleSignal.Equals(Nall.RateLimiting.Adaptive.ThrottleSignal other) -> bool
+Nall.RateLimiting.Adaptive.ThrottleSignal.IsThrottled.get -> bool
+Nall.RateLimiting.Adaptive.ThrottleSignal.RetryAfter.get -> System.TimeSpan?
+Nall.RateLimiting.Adaptive.ThrottleSignal.RetryAfter.init -> void
+Nall.RateLimiting.Adaptive.ThrottleSignal.StatusCode.get -> int
+Nall.RateLimiting.Adaptive.ThrottleSignal.StatusCode.init -> void
+Nall.RateLimiting.Adaptive.ThrottleSignal.ThrottledCount.get -> int
+Nall.RateLimiting.Adaptive.ThrottleSignal.ThrottledCount.init -> void
+Nall.RateLimiting.Adaptive.ThrottleSignal.ThrottleSignal() -> void
+Nall.RateLimiting.Adaptive.ThrottleSignal.ThrottleSignal(int StatusCode, System.TimeSpan? RetryAfter = null, int ThrottledCount = 0) -> void
+override Nall.RateLimiting.Adaptive.RateControllerState.GetHashCode() -> int
+override Nall.RateLimiting.Adaptive.RequestCost.GetHashCode() -> int
+override Nall.RateLimiting.Adaptive.ThrottleSignal.GetHashCode() -> int
+static Nall.RateLimiting.Adaptive.HttpThrottleClassifier.IsThrottled(int statusCode, System.TimeSpan? retryAfter) -> bool
+static Nall.RateLimiting.Adaptive.RateControllerState.operator !=(Nall.RateLimiting.Adaptive.RateControllerState left, Nall.RateLimiting.Adaptive.RateControllerState right) -> bool
+static Nall.RateLimiting.Adaptive.RateControllerState.operator ==(Nall.RateLimiting.Adaptive.RateControllerState left, Nall.RateLimiting.Adaptive.RateControllerState right) -> bool
+static Nall.RateLimiting.Adaptive.RequestCost.operator !=(Nall.RateLimiting.Adaptive.RequestCost left, Nall.RateLimiting.Adaptive.RequestCost right) -> bool
+static Nall.RateLimiting.Adaptive.RequestCost.operator ==(Nall.RateLimiting.Adaptive.RequestCost left, Nall.RateLimiting.Adaptive.RequestCost right) -> bool
+static Nall.RateLimiting.Adaptive.ThrottleSignal.operator !=(Nall.RateLimiting.Adaptive.ThrottleSignal left, Nall.RateLimiting.Adaptive.ThrottleSignal right) -> bool
+static Nall.RateLimiting.Adaptive.ThrottleSignal.operator ==(Nall.RateLimiting.Adaptive.ThrottleSignal left, Nall.RateLimiting.Adaptive.ThrottleSignal right) -> bool

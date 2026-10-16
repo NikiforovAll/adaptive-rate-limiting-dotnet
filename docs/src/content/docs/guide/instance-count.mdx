@@ -1,0 +1,132 @@
+---
+title: Instance count
+description: Split one budget across processes with a static or a custom instance count source.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+import RateLimitSimulator from '../../../components/RateLimitSimulator.astro';
+
+An API budget is often for a client ID, a key or an account, not for one process. When several processes use the same budget, each one has its own limiter. The limiters do not talk to each other. Each one takes an equal share of the budget, and finds its own rate inside the share.
+
+## How the share works
+
+The rates in the options are for the whole budget. With an instance count of N, each process uses:
+
+- `InitialUnitsPerMinute / N`, `MinUnitsPerMinute / N` and `MaxUnitsPerMinute / N`.
+- `Aimd.IncreaseStep / N` and `Cubic.ScaleConstant / N`.
+
+So N processes together climb about as fast as one process with the full budget. When N changes, each limiter scales its current rate by the old count divided by the new count. The rate for the whole budget stays the same.
+
+The count is a model. If one process has more work than the others, it still gets only its share. If the count is too low, the processes together can go over the budget, and they find the limit by throttles. If the count is too high, the budget is not fully used.
+
+## Set a static count
+
+<Tabs>
+<TabItem label="Configuration">
+
+```json title="appsettings.json"
+{
+  "AdaptiveRateLimiting": {
+    "Limiters": {
+      "search-api": {
+        "InstanceCount": 3
+      }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem label="Delegate">
+
+```csharp
+services.AddAdaptiveRateLimiter("search-api", o => o.InstanceCount = 3);
+```
+
+</TabItem>
+<TabItem label="No DI">
+
+```csharp
+limiter.SetInstanceCount(2);
+```
+
+</TabItem>
+</Tabs>
+
+A static count fits a fixed number of replicas. Set it in the configuration of each deployment, so that it matches the replica count.
+
+## Give a live count
+
+When the number of processes changes at run time, give an `IInstanceCountSource`. The limiter reads `Current` once, and then calls `SetInstanceCount` with each value that the source sends to the listener of `OnChange`. It disposes the object that `OnChange` returns when the limiter is disposed.
+
+```csharp title="LiveWorkerCount.cs"
+public sealed class LiveWorkerCount(IWorkerRegistry registry) : IInstanceCountSource
+{
+    private static readonly TimeSpan s_period = TimeSpan.FromMinutes(1);
+
+    public int Current => Math.Max(1, registry.CountLiveWorkers());
+
+    public IDisposable? OnChange(Action<int> listener) =>
+        new Timer(
+            _ =>
+            {
+                try
+                {
+                    listener(Current);
+                }
+                catch (Exception)
+                {
+                    // The store is not available. Keep the last count.
+                }
+            },
+            null,
+            s_period,
+            s_period
+        );
+}
+```
+
+An exception in a `Timer` callback stops the process. Catch the errors of the store in the callback.
+
+`IWorkerRegistry` stands for any shared store that knows the live processes: a heartbeat table in a database, a key per process with a time-to-live in a cache, or the replica count of an orchestrator. Count only the processes that use this budget.
+
+Register the source for a named limiter:
+
+```csharp
+services.AddSingleton<IWorkerRegistry, WorkerRegistry>();
+services.AddAdaptiveRateLimiter("billing-api").WithInstanceCount<LiveWorkerCount>();
+```
+
+Without DI:
+
+```csharp
+limiter.UseInstanceCount(new LiveWorkerCount(registry));
+```
+
+### Rules
+
+- `Current` must be 1 or more. Return at least 1, also when the store is empty or not available.
+- A source replaces the source before it.
+- After `SetInstanceCount` or `UseInstanceCount`, `InstanceCount` in the options no longer applies, also after a reload.
+- If the first count is not valid for the options, `UseInstanceCount` throws `ArgumentOutOfRangeException`. A later count that is not valid is ignored, and the limiter keeps its count. The limiter logs a warning with event ID 2. See [Logs](/adaptive-rate-limiting-dotnet/guide/configuration/#logs).
+- `StaticInstanceCountSource(count)` is a source that never changes.
+
+<Aside type="caution" title="Each share must be valid">
+The options are checked at the share of one process. With a high count, `MinUnitsPerMinute / N` gets small, and `MaxWait` must be long enough for the largest request at that rate. If a count fails the check, the limiter keeps the count it has. Check the `ratelimit.adaptive.instances` gauge on each process.
+</Aside>
+
+## See the share
+
+Change the instance count while the simulator runs. The sum of the rates stays near the quota, and each instance takes its share.
+
+<RateLimitSimulator
+	view="live"
+	mode="aimd"
+	instances={2}
+	quota={3000}
+	demand={3000}
+	presets={[
+		{ label: 'One instance', text: 'One process with the full budget.', button: '1 instance', set: { instances: 1 } },
+		{ label: 'Scale out', text: 'A second and a third process join. Each limiter scales its rate to the new share.', button: '3 instances', set: { instances: 3 } },
+	]}
+/>

@@ -1,0 +1,590 @@
+---
+import { Code, TabItem, Tabs } from '@astrojs/starlight/components';
+import { linePath, results, totalRate } from './model.js';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const r = results();
+
+const program = `builder.Services.AddAdaptiveRateLimiter("orders-api");
+
+builder
+    .Services.AddHttpClient<OrdersClient>(c =>
+        c.BaseAddress = new Uri("https://api.example.com/")
+    )
+    .AddAdaptiveRateLimitHandler("orders-api");`;
+
+const settings = `{
+  "AdaptiveRateLimiting": {
+    "Limiters": {
+      "orders-api": {
+        "InitialUnitsPerMinute": 600,
+        "MinUnitsPerMinute": 60,
+        "MaxUnitsPerMinute": 1200
+      }
+    }
+  }
+}`;
+
+const icons = {
+	pause: '<circle cx="12" cy="12" r="10"/><path d="M10 15V9"/><path d="M14 15V9"/>',
+	sliders:
+		'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/>',
+	coins: '<circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/>',
+	network:
+		'<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/>',
+	activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+	braces:
+		'<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>',
+};
+
+const features = [
+	{ icon: icons.pause, title: 'Retry-After pause', api: 'MaxPause', text: 'A throttle with Retry-After holds back all requests of the limiter, not only the one that failed.' },
+	{ icon: icons.sliders, title: 'Pluggable controllers', api: 'IRateController', text: 'AIMD (default) and CUBIC are built in. Write your own controller for a different curve.' },
+	{ icon: icons.coins, title: 'Request cost', api: 'IRequestCostEstimator', text: 'A request can cost more than one unit. The estimator tells the cost before the request goes out.' },
+	{ icon: icons.network, title: 'Shared budget', api: 'IInstanceCountSource', text: 'Several processes split one quota. Set a static count, or give a live source.' },
+	{ icon: icons.activity, title: 'Metrics', api: 'System.Diagnostics.Metrics', text: 'Units, throttles, rejections, wait time, rate, queue and instances, ready for OpenTelemetry.' },
+	{ icon: icons.braces, title: 'Configuration and DI', api: 'IConfiguration', text: 'Named limiters bind from configuration and reload on change. The binding does not use reflection.' },
+];
+
+const steps = [
+	{ n: '01', title: 'Wait', text: 'The request waits in a token bucket until its units are free.' },
+	{ n: '02', title: 'Send', text: 'The handler sends the request to the API through HttpClient.' },
+	{ n: '03', title: 'Classify', text: 'A 429, or a 503 with Retry-After, is a throttle. A success that had to wait is a signal to grow.' },
+	{ n: '04', title: 'Adapt', text: 'The controller sets the next rate. A throttle also pauses for Retry-After.' },
+];
+
+const spark = { x: 0, y: 4, w: 320, h: 72 };
+const sparkMax = 1.1 * Math.max(...[r.aimd, r.cubic].flatMap((x) => x.history.map(totalRate)), 3000);
+const controllers = [
+	{
+		key: 'aimd',
+		name: 'AIMD',
+		badge: 'Default',
+		text: 'Adds a fixed step on success and multiplies the rate down on a throttle. Steady and easy to reason about.',
+		path: linePath(r.aimd.history, totalRate, spark, { max: sparkMax }),
+		res: r.aimd,
+	},
+	{
+		key: 'cubic',
+		name: 'CUBIC',
+		badge: 'Opt-in',
+		text: 'Grows on a cubic curve around the last rate that failed. Uses more of the quota, with more throttles.',
+		path: linePath(r.cubic.history, totalRate, spark, { max: sparkMax }),
+		res: r.cubic,
+	},
+];
+const quotaSpark = linePath(r.aimd.history, (p) => p.limit, spark, { step: 1, max: sparkMax });
+const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
+
+const packages = [
+	{ name: 'Nall.RateLimiting.Adaptive', text: 'The limiter, the HttpClient handler, the AIMD and CUBIC controllers, DI registration and metrics.', href: `${base}/guide/getting-started/` },
+	{ name: 'Nall.RateLimiting.Adaptive.MicrosoftGraph', text: 'SharePoint resource-unit costs for Graph requests and $batch, throttled inner $batch responses and CSOM.', href: `${base}/guide/microsoft-graph/` },
+];
+---
+
+<div class="landing not-content">
+	<section class="split">
+		<div class="lede">
+			<p class="eyebrow">Quick start</p>
+			<h2>Three steps to a limiter</h2>
+			<p class="muted">Register a named limiter, add its handler to an <code>HttpClient</code>, and set the rates. Requests now wait for the limiter, and the limiter learns from each response.</p>
+			<ol class="checks">
+				<li><b>Add the package</b> from NuGet.</li>
+				<li><b>Register</b> a limiter and its handler.</li>
+				<li><b>Configure</b> the rates in units per minute.</li>
+			</ol>
+			<a class="link" href={`${base}/guide/getting-started/`}>Read the getting started guide →</a>
+		</div>
+		<div class="code">
+			<Tabs>
+				<TabItem label="Program.cs">
+					<Code code={program} lang="csharp" />
+				</TabItem>
+				<TabItem label="appsettings.json">
+					<Code code={settings} lang="json" />
+				</TabItem>
+			</Tabs>
+		</div>
+	</section>
+
+	<section>
+		<p class="eyebrow">How it works</p>
+		<h2>A feedback loop in front of every request</h2>
+		<ol class="flow">
+			{
+				steps.map((s) => (
+					<li>
+						<span class="n">{s.n}</span>
+						<h3>{s.title}</h3>
+						<p>{s.text}</p>
+					</li>
+				))
+			}
+		</ol>
+		<a class="link" href={`${base}/guide/how-it-works/`}>See the bucket, the loop and the pause →</a>
+	</section>
+
+	<section>
+		<p class="eyebrow">Features</p>
+		<h2>Everything a client needs to share a quota</h2>
+		<div class="features">
+			{
+				features.map((f) => (
+					<article>
+						<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" set:html={f.icon} />
+						<h3>{f.title}</h3>
+						<p>{f.text}</p>
+						<code>{f.api}</code>
+					</article>
+				))
+			}
+		</div>
+	</section>
+
+	<section>
+		<p class="eyebrow">Rate controllers</p>
+		<h2>Pick the curve that fits your API</h2>
+		<div class="controllers">
+			{
+				controllers.map((c) => (
+					<article class={c.key}>
+						<header>
+							<h3>{c.name}</h3>
+							<span class="badge">{c.badge}</span>
+						</header>
+						<p>{c.text}</p>
+						<svg viewBox="0 0 320 80" role="img" aria-label={`${c.name} rate against the quota, model run`}>
+							<path class="q" d={quotaSpark} />
+							<path class="line" d={c.path} />
+						</svg>
+						<dl>
+							<div>
+								<dt>Quota used</dt>
+								<dd>{Math.round(c.res.share * 100)}%</dd>
+							</div>
+							<div>
+								<dt>429s</dt>
+								<dd>{fmt(c.res.n429)}</dd>
+							</div>
+							<div>
+								<dt>Recovery</dt>
+								<dd>{c.res.recovery} s</dd>
+							</div>
+						</dl>
+					</article>
+				))
+			}
+		</div>
+		<p class="footnote">Model numbers: 15 minutes, 2 instances at 2,000 units/min each, quota 3,000 units/min with a 50% drop for 60 s.</p>
+		<a class="link" href={`${base}/guide/controllers/`}>Compare the controllers →</a>
+	</section>
+
+	<section>
+		<p class="eyebrow">Packages</p>
+		<h2>A small core, and an add-on for Microsoft Graph</h2>
+		<div class="packages">
+			{
+				packages.map((p) => (
+					<a class="pkg" href={p.href}>
+						<code class="name">{p.name}</code>
+						<p>{p.text}</p>
+						<code class="cmd">dotnet add package {p.name}</code>
+					</a>
+				))
+			}
+		</div>
+	</section>
+
+	<section class="cta">
+		<h2>See it adapt before you ship it</h2>
+		<p>Run None, Fixed, AIMD and CUBIC against the same quota in your browser. Change the quota, the demand and the number of instances.</p>
+		<div class="actions">
+			<a class="btn primary" href={`${base}/guide/playground/`}>Open the simulator</a>
+			<a class="btn" href={`${base}/guide/why/`}>Why adaptive rate limiting</a>
+		</div>
+	</section>
+</div>
+
+<style>
+	.landing {
+		display: grid;
+		gap: 6rem;
+		padding-bottom: 4rem;
+	}
+	section {
+		min-width: 0;
+	}
+	.eyebrow {
+		margin: 0;
+		color: var(--sl-color-accent);
+		font-family: var(--__sl-font-mono);
+		font-size: 0.75rem;
+		font-weight: 500;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+	h2 {
+		margin: 0.5rem 0 0;
+		color: var(--sl-color-white);
+		font-size: clamp(1.625rem, 3vw, 2.25rem);
+		font-weight: 700;
+		line-height: 1.15;
+		letter-spacing: -0.03em;
+	}
+	h3 {
+		margin: 0;
+		color: var(--sl-color-white);
+		font-size: 1rem;
+		font-weight: 600;
+	}
+	p {
+		margin: 0;
+	}
+	.muted,
+	.footnote {
+		color: var(--sl-color-gray-3);
+	}
+	.muted {
+		margin-top: 1rem;
+		line-height: 1.6;
+	}
+	.muted code {
+		padding: 0.05rem 0.3rem;
+		border-radius: 0.25rem;
+		background: var(--sl-color-gray-6);
+		font-size: 0.9em;
+	}
+	.footnote {
+		margin-top: 1rem;
+		font-size: 0.8125rem;
+		font-style: italic;
+	}
+	.link {
+		display: inline-block;
+		margin-top: 1.5rem;
+		color: var(--sl-color-white);
+		font-size: 0.9375rem;
+		font-weight: 500;
+		text-decoration: none;
+	}
+	.link:hover {
+		color: var(--sl-color-accent);
+	}
+
+	.split {
+		display: grid;
+		gap: 2.5rem;
+		align-items: center;
+	}
+	@media (min-width: 64rem) {
+		.split {
+			grid-template-columns: 0.8fr 1.2fr;
+			gap: 4rem;
+		}
+	}
+	.checks {
+		display: grid;
+		gap: 0.625rem;
+		margin: 1.5rem 0 0;
+		padding: 0;
+		list-style: none;
+		counter-reset: step;
+		color: var(--sl-color-gray-2);
+	}
+	.checks li {
+		display: flex;
+		gap: 0.75rem;
+		align-items: baseline;
+		counter-increment: step;
+	}
+	.checks li::before {
+		content: counter(step);
+		display: grid;
+		flex: none;
+		place-items: center;
+		width: 1.5rem;
+		height: 1.5rem;
+		border: 1px solid var(--land-border);
+		border-radius: 50%;
+		color: var(--sl-color-gray-2);
+		font-family: var(--__sl-font-mono);
+		font-size: 0.75rem;
+	}
+	.checks b {
+		color: var(--sl-color-white);
+		font-weight: 600;
+	}
+	.code {
+		min-width: 0;
+	}
+
+	.flow {
+		display: grid;
+		gap: 1px;
+		margin: 2rem 0 0;
+		padding: 0;
+		overflow: hidden;
+		border: 1px solid var(--land-border);
+		border-radius: 0.875rem;
+		background: var(--land-border);
+		list-style: none;
+	}
+	@media (min-width: 48rem) {
+		.flow {
+			grid-template-columns: repeat(4, 1fr);
+		}
+	}
+	.flow li {
+		position: relative;
+		padding: 1.5rem;
+		background: var(--land-surface);
+	}
+	.flow .n {
+		color: var(--sl-color-accent);
+		font-family: var(--__sl-font-mono);
+		font-size: 0.75rem;
+	}
+	.flow h3 {
+		margin-top: 0.75rem;
+	}
+	.flow p {
+		margin-top: 0.375rem;
+		color: var(--sl-color-gray-3);
+		font-size: 0.875rem;
+		line-height: 1.55;
+	}
+
+	.features {
+		display: grid;
+		gap: 1px;
+		margin-top: 2rem;
+		overflow: hidden;
+		border: 1px solid var(--land-border);
+		border-radius: 0.875rem;
+		background: var(--land-border);
+	}
+	@media (min-width: 40rem) {
+		.features {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+	@media (min-width: 64rem) {
+		.features {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+	.features article {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 1.75rem;
+		background: var(--land-surface);
+		transition: background 0.15s;
+	}
+	.features article:hover {
+		background: var(--land-surface-2);
+	}
+	.icon {
+		width: 1.25rem;
+		height: 1.25rem;
+		margin-bottom: 0.5rem;
+		fill: none;
+		stroke: var(--sl-color-accent);
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		stroke-width: 1.75;
+	}
+	.features p {
+		flex: 1;
+		color: var(--sl-color-gray-3);
+		font-size: 0.875rem;
+		line-height: 1.55;
+	}
+	.features code {
+		align-self: flex-start;
+		margin-top: 0.5rem;
+		padding: 0.125rem 0.5rem;
+		border: 1px solid var(--land-border);
+		border-radius: 0.375rem;
+		color: var(--sl-color-gray-2);
+		font-size: 0.75rem;
+	}
+
+	.controllers {
+		display: grid;
+		gap: 1rem;
+		margin-top: 2rem;
+	}
+	@media (min-width: 48rem) {
+		.controllers {
+			grid-template-columns: 1fr 1fr;
+		}
+	}
+	.controllers article {
+		padding: 1.5rem;
+		border: 1px solid var(--land-border);
+		border-radius: 0.875rem;
+		background: var(--land-surface);
+	}
+	.controllers header {
+		display: flex;
+		gap: 0.75rem;
+		align-items: center;
+	}
+	.controllers h3 {
+		font-family: var(--__sl-font-mono);
+		font-size: 1.125rem;
+	}
+	.badge {
+		padding: 0.125rem 0.5rem;
+		border-radius: 999px;
+		background: var(--sl-color-gray-6);
+		color: var(--sl-color-gray-2);
+		font-size: 0.75rem;
+	}
+	.aimd .badge {
+		background: var(--sl-color-accent-low);
+		color: var(--sl-color-accent-high);
+	}
+	.controllers p {
+		margin-top: 0.5rem;
+		color: var(--sl-color-gray-3);
+		font-size: 0.875rem;
+		line-height: 1.55;
+	}
+	.controllers svg {
+		display: block;
+		width: 100%;
+		height: auto;
+		margin-top: 1.25rem;
+	}
+	.controllers .q {
+		fill: none;
+		stroke: var(--sl-color-gray-4);
+		stroke-dasharray: 4 4;
+	}
+	.controllers .line {
+		fill: none;
+		stroke-width: 2;
+		stroke-linejoin: round;
+	}
+	.aimd .line {
+		stroke: var(--sl-color-accent);
+	}
+	.cubic .line {
+		stroke: var(--land-series-2);
+	}
+	.controllers dl {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		margin: 1.25rem 0 0;
+		padding-top: 1rem;
+		border-top: 1px solid var(--land-border);
+	}
+	.controllers dt {
+		color: var(--sl-color-gray-3);
+		font-size: 0.75rem;
+	}
+	.controllers dd {
+		margin: 0.125rem 0 0;
+		color: var(--sl-color-white);
+		font-size: 1.125rem;
+		font-weight: 600;
+	}
+
+	.packages {
+		display: grid;
+		gap: 1rem;
+		margin-top: 2rem;
+	}
+	@media (min-width: 48rem) {
+		.packages {
+			grid-template-columns: 1fr 1fr;
+		}
+	}
+	.pkg {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		min-width: 0;
+		padding: 1.5rem;
+		border: 1px solid var(--land-border);
+		border-radius: 0.875rem;
+		background: var(--land-surface);
+		color: inherit;
+		text-decoration: none;
+		transition: border-color 0.15s;
+	}
+	.pkg:hover {
+		border-color: var(--sl-color-gray-4);
+	}
+	.pkg .name {
+		overflow-wrap: anywhere;
+		color: var(--sl-color-white);
+		font-size: 0.9375rem;
+		font-weight: 500;
+	}
+	.pkg p {
+		flex: 1;
+		color: var(--sl-color-gray-3);
+		font-size: 0.875rem;
+		line-height: 1.55;
+	}
+	.pkg .cmd {
+		overflow: hidden;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.375rem;
+		background: var(--land-surface-2);
+		border: 1px solid var(--land-border);
+		color: var(--sl-color-gray-2);
+		font-size: 0.75rem;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.cta {
+		position: relative;
+		overflow: hidden;
+		padding: 3.5rem 2rem;
+		border: 1px solid var(--land-border);
+		border-radius: 1rem;
+		background:
+			radial-gradient(30rem 14rem at 50% 0%, color-mix(in srgb, var(--sl-color-accent) 16%, transparent), transparent 70%),
+			var(--land-surface);
+		text-align: center;
+	}
+	.cta p {
+		max-width: 36rem;
+		margin: 1rem auto 0;
+		color: var(--sl-color-gray-3);
+		line-height: 1.6;
+	}
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		justify-content: center;
+		margin-top: 2rem;
+	}
+	.btn {
+		padding: 0.625rem 1.125rem;
+		border: 1px solid var(--land-border);
+		border-radius: 0.5rem;
+		background: var(--land-surface);
+		color: var(--sl-color-white);
+		font-size: 0.9375rem;
+		font-weight: 500;
+		text-decoration: none;
+	}
+	.btn:hover {
+		border-color: var(--sl-color-gray-4);
+	}
+	.btn.primary {
+		border-color: var(--sl-color-white);
+		background: var(--sl-color-white);
+		color: var(--sl-color-black);
+	}
+	.btn.primary:hover {
+		opacity: 0.88;
+	}
+</style>

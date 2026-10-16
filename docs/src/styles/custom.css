@@ -1,0 +1,61 @@
+:root {
+	--sl-font: 'Inter', system-ui, sans-serif;
+	--sl-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+	--sl-color-white: hsl(0, 0%, 100%);
+	--sl-color-gray-1: hsl(240, 6%, 92%);
+	--sl-color-gray-2: hsl(240, 5%, 76%);
+	--sl-color-gray-3: hsl(240, 4%, 56%);
+	--sl-color-gray-4: hsl(240, 4%, 36%);
+	--sl-color-gray-5: hsl(240, 5%, 20%);
+	--sl-color-gray-6: hsl(240, 6%, 10%);
+	--sl-color-black: hsl(240, 8%, 5%);
+
+	--sl-color-accent-low: hsl(160, 55%, 13%);
+	--sl-color-accent: hsl(160, 72%, 42%);
+	--sl-color-accent-high: hsl(156, 70%, 78%);
+
+	--land-danger: hsl(0, 80%, 64%);
+	--land-series-2: hsl(258, 85%, 72%);
+	--land-surface: hsl(240, 7%, 8%);
+	--land-surface-2: hsl(240, 6%, 11%);
+	--land-border: hsl(240, 5%, 17%);
+	--land-grid: hsla(0, 0%, 100%, 0.05);
+
+	--sl-content-width: 60rem;
+}
+
+:root[data-theme='light'] {
+	--sl-color-white: hsl(240, 10%, 4%);
+	--sl-color-gray-1: hsl(240, 6%, 12%);
+	--sl-color-gray-2: hsl(240, 5%, 24%);
+	--sl-color-gray-3: hsl(240, 4%, 40%);
+	--sl-color-gray-4: hsl(240, 4%, 58%);
+	--sl-color-gray-5: hsl(240, 5%, 84%);
+	--sl-color-gray-6: hsl(240, 6%, 95%);
+	--sl-color-gray-7: hsl(240, 10%, 98%);
+	--sl-color-black: hsl(0, 0%, 100%);
+
+	--sl-color-accent-low: hsl(155, 60%, 91%);
+	--sl-color-accent: hsl(162, 80%, 32%);
+	--sl-color-accent-high: hsl(164, 80%, 20%);
+
+	--land-danger: hsl(0, 72%, 50%);
+	--land-series-2: hsl(258, 70%, 56%);
+	--land-surface: hsl(0, 0%, 100%);
+	--land-surface-2: hsl(240, 10%, 98%);
+	--land-border: hsl(240, 6%, 89%);
+	--land-grid: hsla(240, 10%, 10%, 0.05);
+}
+
+:root[data-has-hero] {
+	--sl-content-width: 72rem;
+}
+
+main:has(.wide-page) {
+	--sl-content-width: 84rem;
+}
+
+:root[data-has-hero] .content-panel {
+	padding-top: 0;
+}

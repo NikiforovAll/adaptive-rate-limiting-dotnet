@@ -5,7 +5,13 @@ on:
     branches:
       - main
   pull_request:
+  release:
+    types:
+      - published
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   DOTNET_NOLOGO: true
@@ -29,6 +35,12 @@ jobs:
           dotnet-version: 8.0.x
           global-json-file: global.json
 
+      - name: Dotnet Tool Restore
+        run: dotnet tool restore
+
+      - name: Format Check
+        run: dotnet csharpier check .
+
       - name: Dotnet Restore
         run: dotnet restore adaptive-rate-limiting-dotnet.slnx
 
@@ -48,3 +60,67 @@ jobs:
           name: test-results
           path: ./Artefacts
           if-no-files-found: ignore
+
+  pack:
+    name: Pack
+    needs: build
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Dotnet Pack
+        run: >
+          dotnet pack adaptive-rate-limiting-dotnet.slnx
+          --configuration Release --output ./Artefacts
+
+      - name: Upload Packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: |
+            ./Artefacts/*.nupkg
+            ./Artefacts/*.snupkg
+
+  push-nuget:
+    name: Push NuGet
+    needs: pack
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: NuGet
+      url: https://www.nuget.org/packages/Nall.RateLimiting.Adaptive
+    steps:
+      - name: Download Packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nupkg
+          path: ./Artefacts
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: NuGet Login
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Dotnet NuGet Push
+        run: >
+          dotnet nuget push ./Artefacts/*.nupkg
+          --source https://api.nuget.org/v3/index.json
+          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
+          --skip-duplicate

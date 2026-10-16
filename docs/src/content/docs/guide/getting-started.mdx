@@ -1,0 +1,175 @@
+---
+title: Getting started
+description: Install the package and add the limiter to an HttpClient.
+---
+
+import { Aside, Steps, Tabs, TabItem, FileTree } from '@astrojs/starlight/components';
+
+This page adds a limiter to a typed `HttpClient`, sets its rates, adds a retry policy, and handles a rejected request.
+
+## Install
+
+```bash
+dotnet add package Nall.RateLimiting.Adaptive
+```
+
+The package targets .NET 8 and .NET 10. For Microsoft Graph and SharePoint, also add `Nall.RateLimiting.Adaptive.MicrosoftGraph`. See [Microsoft Graph](/adaptive-rate-limiting-dotnet/guide/microsoft-graph/).
+
+## Add the limiter to an HttpClient
+
+<Tabs syncKey="di">
+<TabItem label="With dependency injection">
+
+<Steps>
+
+1. Register a named limiter. The name connects the limiter, its settings and its metrics.
+
+   ```csharp title="Program.cs" {3}
+   var builder = Host.CreateApplicationBuilder(args);
+
+   builder.Services.AddAdaptiveRateLimiter("orders-api");
+   ```
+
+2. Add the limit handler to the `HttpClient` with the same name.
+
+   ```csharp title="Program.cs" {5}
+   builder
+       .Services.AddHttpClient<OrdersClient>(c =>
+           c.BaseAddress = new Uri("https://api.example.com/")
+       )
+       .AddAdaptiveRateLimitHandler("orders-api");
+   ```
+
+3. Use the client as usual.
+
+   ```csharp title="OrdersClient.cs"
+   public sealed class OrdersClient(HttpClient http)
+   {
+       public Task<Order?> GetAsync(int id) => http.GetFromJsonAsync<Order>($"orders/{id}");
+   }
+   ```
+
+</Steps>
+
+The limiter is a keyed singleton. All clients with `AddAdaptiveRateLimitHandler("orders-api")` share it. To get it, call `GetRequiredKeyedService<AdaptiveRateLimiter>("orders-api")`.
+
+</TabItem>
+<TabItem label="Without dependency injection">
+
+Create the limiter, and put an `AdaptiveRateLimitHandler` in front of the handler that sends the request.
+
+```csharp title="Program.cs"
+using var limiter = new AdaptiveRateLimiter(
+    "orders-api",
+    new AdaptiveRateLimiterOptions
+    {
+        InitialUnitsPerMinute = 600,
+        MinUnitsPerMinute = 60,
+        MaxUnitsPerMinute = 1200,
+    }
+);
+
+using var client = new HttpClient(
+    new AdaptiveRateLimitHandler(limiter) { InnerHandler = new SocketsHttpHandler() }
+)
+{
+    BaseAddress = new Uri("https://api.example.com/"),
+};
+
+using var response = await client.GetAsync("orders");
+```
+
+Share one limiter between all clients that use the same budget. Dispose the limiter when you stop. The `HttpClient` does not dispose it.
+
+</TabItem>
+</Tabs>
+
+## Set the rates
+
+The limiter reads its settings from `AdaptiveRateLimiting:Limiters:<name>`. Rates are in units per minute, for the whole budget.
+
+```json title="appsettings.json"
+{
+  "AdaptiveRateLimiting": {
+    "Limiters": {
+      "orders-api": {
+        "InitialUnitsPerMinute": 600,
+        "MinUnitsPerMinute": 60,
+        "MaxUnitsPerMinute": 1200
+      }
+    }
+  }
+}
+```
+
+Choose the values like this:
+
+- `MaxUnitsPerMinute`: a bit below the published limit of the API, if it has one. The limiter never goes above it.
+- `MinUnitsPerMinute`: the lowest rate that is still useful. The limiter never goes below it.
+- `InitialUnitsPerMinute`: a safe rate to start with. It must be between the minimum and the maximum.
+
+<Aside type="caution" title="Set all three rates">
+The defaults are `600`, `60` and `1200`. They are only a start point, and they can change in a later version. If you set only `MaxUnitsPerMinute` below `600`, the initial rate is above the maximum and the limiter does not start. Set all three rates for each API. For SharePoint, `ForSharePoint()` sets [other defaults](/adaptive-rate-limiting-dotnet/guide/microsoft-graph/#the-sharepoint-defaults).
+</Aside>
+
+All options are in [Configuration](/adaptive-rate-limiting-dotnet/guide/configuration/).
+
+## Add a retry policy
+
+The limiter does not retry. It cuts the rate and pauses on a 429, and then returns the 429 to the caller. Keep a retry policy, and put it **outside** the limit handler, so that each retry also waits for units.
+
+With `IHttpClientFactory`, the first handler that you add is the outer one. Add the retry handler first:
+
+```csharp title="Program.cs" {4-5}
+var http = services.AddHttpClient<OrdersClient>(c =>
+    c.BaseAddress = new Uri("https://api.example.com/")
+);
+http.AddResilienceHandler("retry", p => p.AddRetry(new HttpRetryStrategyOptions()));
+http.AddAdaptiveRateLimitHandler("orders-api");
+```
+
+This sample uses `Microsoft.Extensions.Http.Resilience`. Any retry handler works if it is outside the limit handler.
+
+<Aside type="caution" title="Timeouts count the wait">
+The wait for units runs inside the `HttpClient`. `HttpClient.Timeout` and the timeouts of a resilience pipeline include that wait. If an attempt timeout is shorter than `MaxWait`, the timeout cancels the wait first. See [Troubleshooting](/adaptive-rate-limiting-dotnet/guide/troubleshooting/#requests-fail-with-a-timeout-before-maxwait).
+</Aside>
+
+## Handle a rejected request
+
+The limiter does not send a request when the queue is full (`QueueLimit`), or when the request waits longer than `MaxWait`. Then `SendAsync` throws `RateLimitRejectedException`. The request costs no quota.
+
+```csharp
+try
+{
+    await orders.GetAsync(42);
+}
+catch (RateLimitRejectedException)
+{
+    // The request was not sent. Try again later, or drop the work item.
+}
+```
+
+The default retry strategy of `Microsoft.Extensions.Http.Resilience` does not retry this exception.
+
+## Call the limiter directly
+
+For a client that is not an `HttpClient`, call the limiter yourself. Pass the same cost and the timestamp from `WaitAsync` to `OnResponseAsync`.
+
+```csharp
+var cost = new RequestCost(Units: 2);
+var sentAt = await limiter.WaitAsync(cost, cancellationToken);
+using var response = await client.SendAsync(request, cancellationToken);
+await limiter.OnResponseAsync(response, cost, sentAt, cancellationToken);
+```
+
+The timestamp tells the limiter when the request was sent. A throttle of a request that was sent before the last cut does not cut the rate again.
+
+## What you have now
+
+<FileTree>
+- Program.cs AddAdaptiveRateLimiter, AddHttpClient, retry and limit handlers
+- appsettings.json the rates of each named limiter
+- OrdersClient.cs a typed client, no limiter code
+</FileTree>
+
+Next, read [How it works](/adaptive-rate-limiting-dotnet/guide/how-it-works/) to see what the limiter does with each response, or [Recipes](/adaptive-rate-limiting-dotnet/guide/recipes/) for more setups.

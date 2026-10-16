@@ -1,0 +1,963 @@
+---
+import { MAX_INSTANCES, STORIES } from './simulator/engine.js';
+
+type Mode = 'none' | 'fixed' | 'aimd' | 'cubic';
+type Story = keyof typeof STORIES;
+
+interface Preset {
+	label: string;
+	text: string;
+	button?: string;
+	set: {
+		mode?: Mode;
+		instances?: number;
+		quota?: number;
+		demand?: number;
+		story?: Story;
+		drop?: boolean;
+		reset?: boolean;
+		options?: Record<string, unknown>;
+	};
+}
+
+interface Props {
+	view?: 'live' | 'compare' | 'both';
+	mode?: Mode;
+	modes?: Mode[];
+	compareModes?: Mode[];
+	instances?: number;
+	quota?: number;
+	demand?: number;
+	options?: Record<string, unknown>;
+	presets?: Preset[];
+	caption?: string;
+	/** Shows the story picker. The race then runs the chosen story. */
+	stories?: boolean;
+	story?: Story;
+	/** Shows the seed, the options editor, the export, and keeps the state in the URL hash. */
+	tools?: boolean;
+	seed?: number;
+}
+
+const labels: Record<Mode, string> = { none: 'No limiter', fixed: 'Fixed rate', aimd: 'AIMD', cubic: 'CUBIC' };
+const {
+	view = 'live',
+	mode = 'aimd',
+	modes = ['none', 'fixed', 'aimd', 'cubic'],
+	compareModes = ['none', 'fixed', 'aimd', 'cubic'],
+	instances = 2,
+	quota = 3000,
+	demand = 2000,
+	options = {},
+	presets = [],
+	caption,
+	stories = false,
+	story = stories ? 'neighbor' : 'free',
+	tools = false,
+	seed = 42,
+} = Astro.props;
+
+const showLive = view !== 'compare';
+const showCompare = view !== 'live';
+const counts = Array.from({ length: MAX_INSTANCES }, (_, i) => i + 1);
+const config = JSON.stringify({ mode, instances, quota, demand, options, compareModes, story, tools });
+---
+
+<figure class="rate-sim not-content" data-rate-sim data-config={config}>
+	<div class="sim-controls" role="group" aria-label="Simulator settings">
+		{
+			showLive && (
+				<div class="sim-buttons">
+					<button type="button" class="sim-btn sim-primary" data-role="play" aria-pressed="true">
+						Pause
+					</button>
+					<button type="button" class="sim-btn" data-role="reset">
+						Reset
+					</button>
+					<button type="button" class="sim-btn" data-role="drop" title="Another client takes half the quota for 60 s">
+						Quota drop
+					</button>
+				</div>
+			)
+		}
+		{
+			showLive && (
+				<label>
+					Mode
+					<select data-role="mode">
+						{modes.map((m) => (
+							<option value={m} selected={m === mode}>
+								{labels[m]}
+							</option>
+						))}
+					</select>
+				</label>
+			)
+		}
+		{
+			stories && (
+				<label>
+					Story
+					<select data-role="story">
+						{Object.entries(STORIES).map(([key, s]) => (
+							<option value={key} selected={key === story}>
+								{s.label}
+							</option>
+						))}
+					</select>
+				</label>
+			)
+		}
+		<label>
+			Instances
+			<select data-role="instances">
+				{counts.map((n) => <option value={n} selected={n === instances}>{n}</option>)}
+			</select>
+		</label>
+		{
+			showLive && (
+				<label>
+					Speed
+					<select data-role="speed">
+						<option value="1">1x</option>
+						<option value="4" selected>
+							4x
+						</option>
+						<option value="16">16x</option>
+					</select>
+				</label>
+			)
+		}
+		<label class="sim-range">
+			Hidden quota
+			<input data-role="quota" type="range" min="600" max="9000" step="300" value={quota} />
+			<output data-role="quota-value">{quota}</output>
+		</label>
+		<label class="sim-range">
+			Demand per instance
+			<input data-role="demand" type="range" min="200" max="5000" step="100" value={demand} />
+			<output data-role="demand-value">{demand}</output>
+		</label>
+		{
+			tools && (
+				<div class="sim-buttons">
+					<label>
+						Seed
+						<input class="sim-seed" data-role="seed" type="number" min="1" step="1" value={seed} inputmode="numeric" />
+					</label>
+					<button type="button" class="sim-btn" data-role="new-seed" title="A new random seed: other arrival times and costs">
+						New seed
+					</button>
+					<button type="button" class="sim-btn" data-role="copy-link" title="Copy a link with these settings">
+						Copy link
+					</button>
+				</div>
+			)
+		}
+	</div>
+
+	{
+		showLive && (
+			<div data-role="live">
+				<p class="sim-story" data-role="story-status" aria-live="polite" />
+				<svg class="sim-svg" data-role="pipeline" role="img" aria-label="Live view of the queues, buckets and the shared quota" />
+				<div class="sim-legend" aria-hidden="true">
+					<span>
+						Cost <i class="k-box q-c1" />1 <i class="k-box q-c2" />2 <i class="k-box q-c5" />5 units
+					</span>
+					<span>
+						<i class="k-box f-tokens" />
+						Tokens
+					</span>
+					<span>
+						Quota meter <i class="k-box m-ok" />
+						under 90% <i class="k-box m-near" />
+						90-100% <i class="k-box m-over" />
+						full
+					</span>
+				</div>
+				<dl class="sim-tiles">
+					<div>
+						<dt>Units used, 60 s</dt>
+						<dd data-tile="used">0</dd>
+					</div>
+					<div>
+						<dt>Sum of rates</dt>
+						<dd data-tile="rate">0</dd>
+					</div>
+					<div>
+						<dt>Throttled</dt>
+						<dd data-tile="throttled">0</dd>
+					</div>
+					<div>
+						<dt>In queue</dt>
+						<dd data-tile="queue">0</dd>
+					</div>
+					<div>
+						<dt>p95 wait</dt>
+						<dd data-tile="wait">0 s</dd>
+					</div>
+					<div>
+						<dt>Rejected or gave up</dt>
+						<dd data-tile="rejected">0</dd>
+					</div>
+				</dl>
+				<div class="sim-chart">
+					<svg class="sim-svg" data-role="chart" role="img" tabindex="0" aria-label="Rate chart" />
+					<div class="sim-tip" data-role="tip" role="status" hidden />
+				</div>
+				<div class="sim-legend" data-role="legend" aria-hidden="true" />
+				<pre class="sim-log" data-role="log" aria-hidden="true" />
+			</div>
+		)
+	}
+
+	{
+		showCompare && (
+			<div class="sim-compare" data-role="compare">
+				{showLive && <p class="sim-section">The race</p>}
+				<div class="sim-buttons">
+					<button type="button" class="sim-btn sim-primary" data-role="compare-run">
+						Run the race
+					</button>
+					<button type="button" class="sim-btn" data-role="compare-skip">
+						Show the result
+					</button>
+				</div>
+				<p class="sim-note" data-role="compare-note" />
+				<div class="race-board" data-role="compare-board" aria-live="off" />
+				<svg class="sim-svg" data-role="compare-chart" role="img" aria-label="Race chart" />
+				<div class="sim-legend" data-role="compare-legend" aria-hidden="true" />
+				<div class="sim-table">
+					<table data-role="compare-table" />
+				</div>
+			</div>
+		)
+	}
+
+	{
+		tools && (
+			<div class="sim-tools">
+				<details class="sim-panel">
+					<summary>Limiter options</summary>
+					<p class="sim-note">A change starts a new run. Changed values are marked. The checks are the checks of the library.</p>
+					<div class="sim-options" data-role="options" />
+					<p class="sim-error" data-role="options-error" role="alert" />
+					<button type="button" class="sim-btn" data-role="options-reset">
+						Reset the options
+					</button>
+				</details>
+
+				<div class="sim-panel">
+					<p class="sim-section">Export the settings</p>
+					<div class="sim-buttons" role="group" aria-label="Format">
+						<button type="button" class="sim-btn" data-export="json" aria-pressed="true">
+							appsettings.json
+						</button>
+						<button type="button" class="sim-btn" data-export="cs" aria-pressed="false">
+							C#
+						</button>
+						<button type="button" class="sim-btn" data-role="export-copy">
+							Copy
+						</button>
+					</div>
+					<pre class="sim-code"><code data-role="export-code" /></pre>
+					<p class="sim-note" data-role="export-note" />
+				</div>
+			</div>
+		)
+	}
+
+	{
+		presets.length > 0 && (
+			<div class="sim-presets">
+				<p class="sim-presets-title">Try these</p>
+				<ol>
+					{presets.map((p) => (
+						<li>
+							<span>
+								<strong>{p.label}.</strong> {p.text}
+							</span>
+							<button type="button" class="sim-btn" data-preset={JSON.stringify(p.set)}>
+								{p.button ?? 'Set'}
+							</button>
+						</li>
+					))}
+				</ol>
+			</div>
+		)
+	}
+
+	<figcaption>
+		{caption && <span>{caption} </span>}
+		All numbers here come from a model of the library, not from a real API. Rates are in units per minute.
+	</figcaption>
+</figure>
+
+<script>
+	import { mountAll } from './simulator/view.js';
+	mountAll();
+</script>
+
+<style>
+	.rate-sim {
+		--sim-i1: var(--sl-color-blue);
+		--sim-i2: var(--sl-color-purple);
+		--sim-i3: var(--sl-color-green);
+		--sim-i4: var(--sl-color-orange);
+		--sim-none: var(--sl-color-gray-3);
+		--sim-fixed: var(--sl-color-orange);
+		--sim-aimd: var(--sl-color-blue);
+		--sim-cubic: var(--sl-color-purple);
+		--sim-red: var(--sl-color-red);
+		margin: 1.5rem 0;
+		padding: 1rem;
+		border: 1px solid var(--sl-color-hairline);
+		border-radius: 0.75rem;
+		background: var(--sl-color-bg-nav);
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-2);
+		min-width: 0;
+	}
+	.sim-controls {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem 1rem;
+		align-items: center;
+		margin-bottom: 0.75rem;
+	}
+	.sim-controls label {
+		display: flex;
+		gap: 0.4rem;
+		align-items: center;
+	}
+	.sim-range input {
+		width: 8.5rem;
+		accent-color: var(--sl-color-accent);
+	}
+	.sim-range output {
+		min-width: 3.2rem;
+		font-family: var(--sl-font-mono);
+		font-variant-numeric: tabular-nums;
+		color: var(--sl-color-white);
+	}
+	.sim-buttons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		align-items: center;
+	}
+	.rate-sim select,
+	.sim-btn {
+		font: inherit;
+		color: var(--sl-color-white);
+		background: var(--sl-color-bg);
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.4rem;
+		padding: 0.2rem 0.6rem;
+		cursor: pointer;
+	}
+	.sim-btn:hover,
+	.rate-sim select:hover {
+		border-color: var(--sl-color-accent);
+	}
+	.sim-btn:focus-visible,
+	.rate-sim select:focus-visible,
+	.sim-range input:focus-visible {
+		outline: 2px solid var(--sl-color-accent);
+		outline-offset: 2px;
+	}
+	.sim-primary {
+		background: var(--sl-color-accent);
+		border-color: var(--sl-color-accent);
+		color: var(--sl-color-black);
+	}
+	.sim-svg {
+		display: block;
+		width: 100%;
+		height: auto;
+		margin: 0.5rem 0;
+	}
+	.sim-legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem 1rem;
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+	.sim-tiles {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+		gap: 0.5rem;
+		margin: 0.75rem 0;
+	}
+	.sim-tiles > div {
+		border: 1px solid var(--sl-color-hairline);
+		border-radius: 0.5rem;
+		padding: 0.4rem 0.6rem;
+		background: var(--sl-color-bg);
+		margin: 0;
+	}
+	.sim-tiles dt {
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+	.sim-tiles dd {
+		margin: 0.1rem 0 0;
+		font-size: var(--sl-text-lg);
+		font-family: var(--sl-font-mono);
+		font-variant-numeric: tabular-nums;
+		color: var(--sl-color-white);
+		white-space: nowrap;
+	}
+	.sim-log {
+		margin: 0.5rem 0 0;
+		padding: 0;
+		background: none;
+		border: 0;
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+		white-space: pre-wrap;
+		overflow: hidden;
+	}
+	.sim-log:empty {
+		display: none;
+	}
+	.sim-compare {
+		margin-top: 1rem;
+	}
+	.sim-note {
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+	.sim-table {
+		overflow-x: auto;
+		margin-top: 0.5rem;
+	}
+	.sim-table table {
+		border-collapse: collapse;
+		width: 100%;
+		font-size: var(--sl-text-xs);
+	}
+	.sim-table :global(th),
+	.sim-table :global(td) {
+		padding: 0.35rem 0.5rem;
+		border-bottom: 1px solid var(--sl-color-hairline);
+		text-align: left;
+		white-space: nowrap;
+	}
+	.sim-table :global(td.num) {
+		text-align: right;
+		font-family: var(--sl-font-mono);
+		font-variant-numeric: tabular-nums;
+	}
+	.sim-table :global(td.best) {
+		color: var(--sl-color-green-high);
+		background: var(--sl-color-green-low);
+		font-weight: 600;
+	}
+	.sim-presets {
+		margin-top: 1rem;
+		border-top: 1px solid var(--sl-color-hairline);
+		padding-top: 0.75rem;
+	}
+	.sim-presets-title {
+		margin: 0 0 0.25rem;
+		font-weight: 600;
+		color: var(--sl-color-white);
+	}
+	.sim-presets ol {
+		margin: 0;
+		padding-left: 1.25rem;
+	}
+	.sim-presets li {
+		margin: 0.35rem 0;
+	}
+	.sim-presets li > span {
+		margin-right: 0.5rem;
+	}
+	.sim-presets li .sim-btn {
+		padding: 0 0.5rem;
+		font-size: var(--sl-text-xs);
+	}
+	.rate-sim figcaption {
+		margin-top: 0.75rem;
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+
+	.rate-sim :global(.box) {
+		fill: var(--sl-color-bg);
+		stroke: var(--sl-color-gray-5);
+	}
+	.rate-sim :global(.t-head) {
+		font: 600 13px var(--sl-font);
+		fill: var(--sl-color-white);
+	}
+	.rate-sim :global(.t-small) {
+		font: 11px var(--sl-font);
+		fill: var(--sl-color-gray-3);
+	}
+	.rate-sim :global(.t-axis) {
+		font: 10px var(--sl-font-mono);
+		fill: var(--sl-color-gray-3);
+	}
+	.rate-sim :global(.grid) {
+		stroke: var(--sl-color-hairline);
+	}
+	.rate-sim :global(.q-c1) {
+		fill: var(--sl-color-green);
+		background: var(--sl-color-green);
+	}
+	.rate-sim :global(.q-c2) {
+		fill: var(--sl-color-orange);
+		background: var(--sl-color-orange);
+	}
+	.rate-sim :global(.q-c5) {
+		fill: var(--sl-color-red);
+		background: var(--sl-color-red);
+	}
+	.rate-sim :global(.f-tokens) {
+		fill: var(--sl-color-blue);
+		background: var(--sl-color-blue);
+	}
+	.rate-sim :global(.m-ok) {
+		fill: var(--sl-color-green);
+		background: var(--sl-color-green);
+	}
+	.rate-sim :global(.m-near) {
+		fill: var(--sl-color-orange);
+		background: var(--sl-color-orange);
+	}
+	.rate-sim :global(.m-over) {
+		fill: var(--sl-color-red);
+		background: var(--sl-color-red);
+	}
+	.rate-sim :global(.f-red) {
+		fill: var(--sim-red);
+	}
+	.rate-sim :global(.f-muted) {
+		fill: var(--sl-color-gray-3);
+	}
+	.rate-sim :global(.st-muted) {
+		stroke: var(--sl-color-gray-3);
+		stroke-width: 1.5;
+	}
+	.rate-sim :global(.st-red) {
+		stroke: var(--sim-red);
+		stroke-width: 2;
+	}
+	.rate-sim :global(.f-used) {
+		fill: var(--sl-color-gray-4);
+		opacity: 0.35;
+	}
+	.rate-sim :global(.f-drop) {
+		fill: var(--sim-red);
+		opacity: 0.1;
+	}
+	.rate-sim :global(.st-limit) {
+		fill: none;
+		stroke: var(--sim-red);
+		stroke-width: 1.5;
+		stroke-dasharray: 5 4;
+	}
+	.rate-sim :global(.st-sum) {
+		fill: none;
+		stroke: var(--sl-color-white);
+		stroke-width: 1;
+	}
+	.rate-sim :global(.st-series) {
+		fill: none;
+		stroke-width: 2;
+		stroke-linejoin: round;
+	}
+	.rate-sim :global(.s-i1) {
+		stroke: var(--sim-i1);
+		fill: var(--sim-i1);
+		--k: var(--sim-i1);
+	}
+	.rate-sim :global(.s-i2) {
+		stroke: var(--sim-i2);
+		fill: var(--sim-i2);
+		--k: var(--sim-i2);
+	}
+	.rate-sim :global(.s-i3) {
+		stroke: var(--sim-i3);
+		fill: var(--sim-i3);
+		--k: var(--sim-i3);
+	}
+	.rate-sim :global(.s-none) {
+		stroke: var(--sim-none);
+		--k: var(--sim-none);
+	}
+	.rate-sim :global(.s-fixed) {
+		stroke: var(--sim-fixed);
+		--k: var(--sim-fixed);
+	}
+	.rate-sim :global(.s-aimd) {
+		stroke: var(--sim-aimd);
+		--k: var(--sim-aimd);
+	}
+	.rate-sim :global(.s-cubic) {
+		stroke: var(--sim-cubic);
+		--k: var(--sim-cubic);
+		stroke-dasharray: 6 2;
+	}
+	.rate-sim :global(path.st-series.s-i1),
+	.rate-sim :global(path.st-series.s-i2),
+	.rate-sim :global(path.st-series.s-i3) {
+		fill: none;
+	}
+	.rate-sim :global(.k-line),
+	.rate-sim :global(.k-box),
+	.rate-sim :global(.k-dash),
+	.rate-sim :global(.k-area),
+	.rate-sim :global(.k-tick),
+	.rate-sim :global(.k-drop) {
+		display: inline-block;
+		vertical-align: middle;
+		margin: 0 0.3rem 0 0.15rem;
+	}
+	.rate-sim :global(.k-line) {
+		width: 14px;
+		height: 3px;
+		background: var(--k, var(--sl-color-gray-3));
+	}
+	.rate-sim :global(.k-sum) {
+		background: var(--sl-color-white);
+		height: 1px;
+	}
+	.rate-sim :global(.k-box) {
+		width: 10px;
+		height: 10px;
+		border-radius: 2px;
+	}
+	.rate-sim :global(.k-dash) {
+		width: 14px;
+		border-top: 2px dashed var(--sim-red);
+	}
+	.rate-sim :global(.k-area) {
+		width: 12px;
+		height: 10px;
+		background: var(--sl-color-gray-4);
+		opacity: 0.5;
+	}
+	.rate-sim :global(.k-tick) {
+		width: 2px;
+		height: 10px;
+		background: var(--sim-red);
+	}
+	.rate-sim :global(.k-drop) {
+		width: 12px;
+		height: 10px;
+		background: color-mix(in srgb, var(--sim-red) 20%, transparent);
+	}
+	.rate-sim :global(.s-i4) {
+		stroke: var(--sim-i4);
+		fill: var(--sim-i4);
+		--k: var(--sim-i4);
+	}
+	.rate-sim :global(path.st-series.s-i4) {
+		fill: none;
+	}
+
+	.sim-story {
+		margin: 0 0 0.25rem;
+		min-height: 1.4em;
+		color: var(--sl-color-gray-2);
+	}
+	.sim-story:empty {
+		display: none;
+	}
+	.sim-story :global(.sim-clock) {
+		font-family: var(--sl-font-mono);
+		font-variant-numeric: tabular-nums;
+		color: var(--sl-color-gray-3);
+		white-space: nowrap;
+	}
+	.sim-seed {
+		width: 6rem;
+		font: inherit;
+		color: var(--sl-color-white);
+		background: var(--sl-color-bg);
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.4rem;
+		padding: 0.15rem 0.4rem;
+	}
+	.sim-chart {
+		position: relative;
+	}
+	.sim-chart svg:focus-visible {
+		outline: 2px solid var(--sl-color-accent);
+		outline-offset: 2px;
+	}
+	.sim-tip {
+		position: absolute;
+		z-index: 2;
+		width: min(20rem, 100%);
+		padding: 0.5rem 0.65rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.5rem;
+		background: var(--sl-color-bg);
+		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-xs);
+		box-shadow: var(--sl-shadow-md);
+		pointer-events: none;
+	}
+	.sim-tip :global(p) {
+		margin: 0.25rem 0 0;
+	}
+	.sim-tip :global(.tip-head) {
+		margin: 0;
+		font-weight: 600;
+		color: var(--sl-color-white);
+	}
+	.sim-legend :global(.sim-hint) {
+		flex-basis: 100%;
+	}
+	.sim-section {
+		margin: 0 0 0.4rem;
+		font-weight: 600;
+		font-size: var(--sl-text-base);
+		color: var(--sl-color-white);
+	}
+	.sim-compare .sim-note {
+		margin: 0.4rem 0 0;
+	}
+	.race-board {
+		margin: 0.6rem 0;
+		display: grid;
+		gap: 0.3rem;
+	}
+	.race-board :global(.race-clock) {
+		margin: 0;
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+	.race-board :global(.race-clock b) {
+		font-family: var(--sl-font-mono);
+		font-variant-numeric: tabular-nums;
+		color: var(--sl-color-white);
+	}
+	.race-board :global(.race-row) {
+		display: grid;
+		grid-template-columns: 6.5rem minmax(3rem, 1fr) auto;
+		gap: 0.5rem;
+		align-items: center;
+		margin: 0;
+	}
+	.race-board :global(.race-hot) {
+		color: var(--sl-color-red-high);
+	}
+	.race-board :global(.race-badge) {
+		padding: 0 0.3rem;
+		border-radius: 0.3rem;
+		font-family: var(--sl-font);
+		background: var(--sl-color-green-low);
+		color: var(--sl-color-green-high);
+	}
+	.race-board :global(.race-name) {
+		white-space: nowrap;
+		color: var(--sl-color-white);
+	}
+	.race-board :global(.race-track) {
+		height: 0.7rem;
+		border-radius: 0.35rem;
+		background: var(--sl-color-gray-6);
+		overflow: hidden;
+	}
+	.race-board :global(.race-bar) {
+		display: block;
+		height: 100%;
+		background: var(--k);
+		border-radius: 0.35rem;
+	}
+	.race-board :global(.race-num) {
+		font-size: var(--sl-text-xs);
+		font-family: var(--sl-font-mono);
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+		line-height: 1.25;
+	}
+	.sim-tools {
+		margin-top: 1rem;
+		display: grid;
+		gap: 0.75rem;
+	}
+	.sim-panel {
+		border-top: 1px solid var(--sl-color-hairline);
+		padding-top: 0.75rem;
+		min-width: 0;
+	}
+	.sim-panel summary {
+		cursor: pointer;
+		font-weight: 600;
+		font-size: var(--sl-text-base);
+		color: var(--sl-color-white);
+	}
+	.sim-panel > .sim-note,
+	.sim-panel > p {
+		margin: 0.4rem 0;
+	}
+	.sim-options {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+		gap: 0.5rem 1rem;
+	}
+	.sim-options :global(fieldset) {
+		margin: 0;
+		padding: 0.4rem 0.6rem 0.6rem;
+		border: 1px solid var(--sl-color-hairline);
+		border-radius: 0.5rem;
+		min-width: 0;
+	}
+	.sim-options :global(legend) {
+		padding: 0 0.3rem;
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+	.sim-options :global(label) {
+		display: flex;
+		justify-content: space-between;
+		gap: 0.5rem;
+		align-items: center;
+		margin: 0.25rem 0 0;
+	}
+	.sim-options :global(label span) {
+		font-family: var(--sl-font-mono);
+		font-size: var(--sl-text-xs);
+		overflow-wrap: anywhere;
+	}
+	.sim-options :global(label.changed span) {
+		color: var(--sl-color-accent-high);
+		font-weight: 600;
+	}
+	.sim-options :global(label.changed span)::before {
+		content: '* ';
+	}
+	.sim-options :global(input) {
+		width: 6.5rem;
+		flex: none;
+		font: inherit;
+		font-family: var(--sl-font-mono);
+		color: var(--sl-color-white);
+		background: var(--sl-color-bg);
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.4rem;
+		padding: 0.1rem 0.35rem;
+	}
+	.sim-error {
+		color: var(--sl-color-red-high);
+	}
+	.sim-error:empty {
+		display: none;
+	}
+	.rate-sim [aria-pressed='true'][data-export] {
+		border-color: var(--sl-color-accent);
+		background: var(--sl-color-accent-low);
+	}
+	.sim-code {
+		margin: 0.5rem 0 0;
+		padding: 0.6rem 0.75rem;
+		max-width: 100%;
+		overflow-x: auto;
+		border: 1px solid var(--sl-color-hairline);
+		border-radius: 0.5rem;
+		background: var(--sl-color-bg);
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-white);
+	}
+	.sim-table :global(tr.pick) {
+		background: var(--sl-color-green-low);
+	}
+	.sim-table :global(tr.pick th),
+	.sim-table :global(tr.pick td) {
+		color: var(--sl-color-green-high);
+		font-weight: 600;
+	}
+
+	.rate-sim :global(.st-event) {
+		stroke: var(--sl-color-gray-3);
+		stroke-width: 1;
+		stroke-dasharray: 2 3;
+	}
+	.rate-sim :global(.st-cursor) {
+		stroke: var(--sl-color-gray-3);
+		stroke-width: 1;
+	}
+	.rate-sim :global(.mk-story) {
+		fill: var(--sl-color-bg);
+		stroke: var(--sl-color-white);
+		stroke-width: 2;
+	}
+	.rate-sim :global(.mk) {
+		stroke: var(--sl-color-bg);
+		stroke-width: 1;
+	}
+	.rate-sim :global(.mk-max) {
+		stroke: var(--sl-color-bg);
+		stroke-width: 1;
+		opacity: 0.8;
+	}
+	.rate-sim :global(.mk-pause) {
+		fill: var(--sim-red);
+	}
+	.rate-sim :global(.race-head) {
+		fill: var(--k);
+	}
+	.rate-sim :global(.k-cut),
+	.rate-sim :global(.k-max),
+	.rate-sim :global(.k-pause),
+	.rate-sim :global(.k-event) {
+		display: inline-block;
+		vertical-align: middle;
+		margin: 0 0.3rem 0 0.15rem;
+	}
+	.rate-sim :global(.k-cut) {
+		width: 0;
+		height: 0;
+		border: 5px solid transparent;
+		border-top: 8px solid var(--sl-color-gray-2);
+		border-bottom: 0;
+	}
+	.rate-sim :global(.k-max) {
+		width: 0;
+		height: 0;
+		border: 5px solid transparent;
+		border-bottom: 8px solid var(--sl-color-gray-2);
+		border-top: 0;
+	}
+	.rate-sim :global(.k-pause) {
+		width: 14px;
+		height: 3px;
+		background: var(--sim-red);
+	}
+	.rate-sim :global(.k-event) {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		border: 2px solid var(--sl-color-white);
+	}
+	@media (max-width: 40rem) {
+		.rate-sim {
+			padding: 0.75rem;
+		}
+		.sim-range input {
+			width: 7rem;
+		}
+		.race-board :global(.race-row) {
+			grid-template-columns: auto 1fr;
+			grid-template-areas: 'name num' 'track track';
+			gap: 0.2rem 0.5rem;
+		}
+		.race-board :global(.race-name) {
+			grid-area: name;
+		}
+		.race-board :global(.race-num) {
+			grid-area: num;
+		}
+		.race-board :global(.race-track) {
+			grid-area: track;
+		}
+	}
+</style>

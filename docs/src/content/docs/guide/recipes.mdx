@@ -1,0 +1,213 @@
+---
+title: Recipes
+description: Typed clients, named limiters, live reload, custom costs, custom throttles and use without DI.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## A typed HttpClient
+
+```csharp title="Program.cs"
+builder.Services.AddAdaptiveRateLimiter("orders-api");
+
+builder
+    .Services.AddHttpClient<OrdersClient>(c =>
+        c.BaseAddress = new Uri("https://api.example.com/")
+    )
+    .AddAdaptiveRateLimitHandler("orders-api");
+```
+
+```csharp title="OrdersClient.cs"
+public sealed class OrdersClient(HttpClient http)
+{
+    public Task<Order?> GetAsync(int id) => http.GetFromJsonAsync<Order>($"orders/{id}");
+}
+```
+
+The typed client has no limiter code. Several typed or named clients can use the same limiter name. Then they share one budget.
+
+## Named limiters from configuration
+
+Give each API its own limiter and its own section:
+
+```csharp title="Program.cs"
+builder.Services.AddAdaptiveRateLimiter("search-api").WithCostEstimator<SearchCostEstimator>();
+builder.Services.AddAdaptiveRateLimiter("billing-api", o => o.QueueLimit = 50);
+
+builder
+    .Services.AddHttpClient("search", c => c.BaseAddress = new Uri("https://search.example.com/"))
+    .AddAdaptiveRateLimitHandler("search-api");
+builder
+    .Services.AddHttpClient("billing", c => c.BaseAddress = new Uri("https://billing.example.com/"))
+    .AddAdaptiveRateLimitHandler("billing-api");
+```
+
+```json title="appsettings.json"
+{
+  "AdaptiveRateLimiting": {
+    "Limiters": {
+      "search-api": {
+        "InitialUnitsPerMinute": 300,
+        "MinUnitsPerMinute": 30,
+        "MaxUnitsPerMinute": 900,
+        "Controller": "Cubic"
+      },
+      "billing-api": {
+        "InitialUnitsPerMinute": 60,
+        "MinUnitsPerMinute": 10,
+        "MaxUnitsPerMinute": 120,
+        "MaxPause": "00:01:00"
+      }
+    }
+  }
+}
+```
+
+The builder methods (`WithCostEstimator`, `WithThrottleClassifier`, `WithController`, `WithInstanceCount`) take an instance, or a type that the container creates. `WithDefaults` sets default options that the configuration can change. See [The order of the settings](/adaptive-rate-limiting-dotnet/guide/configuration/#the-order-of-the-settings).
+
+Get a limiter by its name:
+
+```csharp
+var limiter = services.GetRequiredKeyedService<AdaptiveRateLimiter>("search-api");
+Console.WriteLine($"{limiter.Name}: {limiter.UnitsPerMinute:F0} units/min");
+```
+
+## Live reload
+
+The settings of a named limiter reload when the configuration source reloads, for example when `appsettings.json` changes. You do not need code for it. The limiter keeps its rate, clamped to the new limits, and its queued requests. See [Live reload](/adaptive-rate-limiting-dotnet/guide/configuration/#live-reload) for the rules.
+
+A common use: turn a limiter off and on without a restart.
+
+```json title="appsettings.json"
+{
+  "AdaptiveRateLimiting": {
+    "Limiters": {
+      "search-api": {
+        "Enabled": false
+      }
+    }
+  }
+}
+```
+
+Without DI, call `UpdateOptions` with a new options object.
+
+## A custom cost estimator
+
+When requests cost different amounts of the budget, give an `IRequestCostEstimator`. Return 0 units for requests that do not count: they are not limited.
+
+```csharp title="SearchCostEstimator.cs"
+public sealed class SearchCostEstimator : IRequestCostEstimator
+{
+    public ValueTask<RequestCost> EstimateAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken
+    )
+    {
+        var path = request.RequestUri?.AbsolutePath ?? "";
+        var cost = path switch
+        {
+            _ when path.StartsWith("/health", StringComparison.Ordinal) => new RequestCost(0),
+            _ when path.StartsWith("/search", StringComparison.Ordinal) => new RequestCost(5, "search"),
+            _ when request.Method != HttpMethod.Get => new RequestCost(2, "write"),
+            _ => new RequestCost(1, "read"),
+        };
+        return ValueTask.FromResult(cost);
+    }
+}
+```
+
+The category is the `ratelimit.category` tag of the metrics. If the estimator reads the request body, leave the body readable for the handler that sends it. For one cost for all requests, use `new FixedCostEstimator(units, category)`.
+
+## A custom throttle classifier
+
+Some APIs throttle with another status code. This classifier also treats 403 with `Retry-After` as a throttle, and keeps the default rules for the rest:
+
+```csharp title="ForbiddenRetryAfterClassifier.cs"
+public sealed class ForbiddenRetryAfterClassifier : IThrottleClassifier
+{
+    private readonly HttpThrottleClassifier _default = new();
+
+    public ValueTask<ThrottleSignal> ClassifyAsync(
+        HttpResponseMessage response,
+        RequestCost cost,
+        CancellationToken cancellationToken
+    )
+    {
+        var signal = _default.Classify(response);
+        if (
+            !signal.IsThrottled
+            && response.StatusCode == HttpStatusCode.Forbidden
+            && signal.RetryAfter is { } retryAfter
+        )
+        {
+            signal = new ThrottleSignal(403, retryAfter, ThrottledCount: 1);
+        }
+
+        return ValueTask.FromResult(signal);
+    }
+}
+```
+
+```csharp
+services.AddAdaptiveRateLimiter("search-api").WithThrottleClassifier<ForbiddenRetryAfterClassifier>();
+```
+
+A `ThrottleSignal` is a throttle when `ThrottledCount` is more than 0. `RetryAfter` sets the pause. A classifier that reads the body must leave it readable for the caller.
+
+<Aside>
+The limiter calls a custom classifier only for requests that it limits: the limiter is enabled and the request costs more than 0 units. For other requests it uses the status and headers.
+</Aside>
+
+## A custom instance count source
+
+See [Instance count](/adaptive-rate-limiting-dotnet/guide/instance-count/#give-a-live-count) for a source that reads the live number of processes from a shared store.
+
+## A custom rate controller
+
+See [Write your own controller](/adaptive-rate-limiting-dotnet/guide/controllers/#write-your-own-controller).
+
+## Use without DI
+
+Create the limiter, then put its handler in front of the handler that sends:
+
+```csharp
+using var limiter = new AdaptiveRateLimiter(
+    "orders-api",
+    new AdaptiveRateLimiterOptions
+    {
+        InitialUnitsPerMinute = 600,
+        MinUnitsPerMinute = 60,
+        MaxUnitsPerMinute = 1200,
+    }
+);
+
+using var client = new HttpClient(
+    new AdaptiveRateLimitHandler(limiter) { InnerHandler = new SocketsHttpHandler() }
+)
+{
+    BaseAddress = new Uri("https://api.example.com/"),
+};
+```
+
+The constructor takes all the parts that the DI builder sets:
+
+```csharp
+new AdaptiveRateLimiter(
+    name,
+    options,
+    controller: null, // IRateController, or null for the Controller option
+    throttleClassifier: null, // IThrottleClassifier, or null for 429 and 503 with Retry-After
+    timeProvider: null, // TimeProvider, or null for TimeProvider.System
+    meterFactory: null, // IMeterFactory, or null for a static meter
+    logger: null // ILogger, or null for no logs
+);
+```
+
+The cost estimator goes to the handler: `new AdaptiveRateLimitHandler(limiter, new SearchCostEstimator())`. Set the instance count with `SetInstanceCount` or `UseInstanceCount`.
+
+For a client that is not an `HttpClient`, call `WaitAsync` and `OnResponseAsync` yourself. See [Call the limiter directly](/adaptive-rate-limiting-dotnet/guide/getting-started/#call-the-limiter-directly).
+
+## Test with a fake clock
+
+The limiter takes a `TimeProvider`. In tests, pass a `FakeTimeProvider` from `Microsoft.Extensions.TimeProvider.Testing` and advance the time by hand. In DI, the limiter uses the `TimeProvider` of the container, if there is one.
