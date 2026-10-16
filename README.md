@@ -7,6 +7,8 @@ Work in progress. Not published yet.
 ## Build
 
 ```bash
+dotnet tool restore
+dotnet husky install
 dotnet build adaptive-rate-limiting-dotnet.slnx
 dotnet test --solution adaptive-rate-limiting-dotnet.slnx
 ```
