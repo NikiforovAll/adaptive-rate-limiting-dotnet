@@ -9,8 +9,9 @@ public static class SharePointRateLimiterBuilderExtensions
 {
     /// <summary>
     /// Counts the resource units of each request with a
-    /// <see cref="SharePointResourceUnitEstimator"/>, and reads throttled inner <c>$batch</c>
-    /// responses with a <see cref="GraphBatchThrottleClassifier"/>.
+    /// <see cref="SharePointResourceUnitEstimator"/>, reads throttled inner <c>$batch</c>
+    /// responses with a <see cref="GraphBatchThrottleClassifier"/>, and uses the default rates of
+    /// <see cref="SharePointRateLimiter.CreateOptions"/>. The configuration can change the rates.
     /// </summary>
     /// <remarks>
     /// The estimator applies to an HttpClient that has
@@ -28,6 +29,7 @@ public static class SharePointRateLimiterBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         return builder
+            .WithDefaults(SharePointRateLimiter.ApplyDefaults)
             .WithCostEstimator(new SharePointResourceUnitEstimator(costs))
             .WithThrottleClassifier<GraphBatchThrottleClassifier>();
     }

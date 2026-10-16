@@ -9,8 +9,8 @@ namespace Nall.RateLimiting.Adaptive.MicrosoftGraph;
 /// <c>$batch</c>. Graph answers a <c>$batch</c> with 200 even when it throttles inner requests.
 /// </summary>
 /// <remarks>
-/// It reads the body only for a successful response to a request of
-/// <see cref="SharePointResourceUnitEstimator.BatchCategory"/>, as a byte array, so that the
+/// It reads the body only for a successful response to a <c>POST</c> to <c>$batch</c>, or to a
+/// request of <see cref="SharePointResourceUnitEstimator.BatchCategory"/>, as a byte array, so that the
 /// caller can still read it. A throttled inner response is a 429, or a 503 with
 /// <c>Retry-After</c>. The signal counts each of them and takes the longest <c>Retry-After</c>.
 /// </remarks>
@@ -48,7 +48,10 @@ public sealed class GraphBatchThrottleClassifier : IThrottleClassifier
         var signal = _status.Classify(response);
         if (
             signal.IsThrottled
-            || cost.Category != SharePointResourceUnitEstimator.BatchCategory
+            || (
+                cost.Category != SharePointResourceUnitEstimator.BatchCategory
+                && !SharePointResourceUnitEstimator.IsBatch(response.RequestMessage)
+            )
             || !response.IsSuccessStatusCode
             || response.Content is not { } content
         )

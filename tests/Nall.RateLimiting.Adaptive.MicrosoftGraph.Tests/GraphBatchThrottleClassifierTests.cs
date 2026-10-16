@@ -30,6 +30,20 @@ public sealed class GraphBatchThrottleClassifierTests
     }
 
     [Test]
+    public async Task ClassifyAsync_PostToBatchWithOtherCategory_ReadsTheInnerResponses()
+    {
+        using var response = Ok("""{"responses":[{"id":"1","status":429}]}""");
+        response.RequestMessage = new HttpRequestMessage(
+            HttpMethod.Post,
+            "https://graph.microsoft.com/v1.0/$batch"
+        );
+
+        var signal = await Classify(response, new RequestCost(3, "custom"));
+
+        signal.ShouldBe(new ThrottleSignal(429, null, 1));
+    }
+
+    [Test]
     public async Task ClassifyAsync_InnerRetryAfterDate_IsTheTimeUntilTheDate()
     {
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));

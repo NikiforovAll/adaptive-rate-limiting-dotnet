@@ -119,6 +119,19 @@ public sealed class AdaptiveRateLimiterBuilder
         return Configure(r => r.InstanceCount = _ => source);
     }
 
+    /// <summary>
+    /// Sets default settings. They apply before the configuration binds, so the configuration
+    /// and a configure delegate can still change them.
+    /// </summary>
+    /// <param name="defaults">Sets the defaults. It replaces the defaults given before.</param>
+    /// <returns>This builder.</returns>
+    public AdaptiveRateLimiterBuilder WithDefaults(Action<AdaptiveRateLimiterOptions> defaults)
+    {
+        ArgumentNullException.ThrowIfNull(defaults);
+
+        return Configure(r => r.Defaults = defaults);
+    }
+
     private static T Create<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T
     >(IServiceProvider services)

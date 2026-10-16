@@ -85,17 +85,13 @@ public sealed class SharePointResourceUnitEstimator : IRequestCostEstimator
             return new RequestCost(0, GraphCategory);
         }
 
-        var path = uri.IsAbsoluteUri ? uri.AbsolutePath : uri.OriginalString;
-        if (
-            request.Method == HttpMethod.Post
-            && IsBatchPath(path)
-            && request.Content is { } content
-        )
+        if (IsBatch(request) && request.Content is { } content)
         {
             var body = await content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
             return new RequestCost(OfBatch(body), BatchCategory);
         }
 
+        var path = uri.IsAbsoluteUri ? uri.AbsolutePath : uri.OriginalString;
         var units = Of(request.Method, path, uri.IsAbsoluteUri ? uri.Query : string.Empty);
         return new RequestCost(units, units == 0 ? GraphCategory : SharePointCategory);
     }
@@ -141,6 +137,11 @@ public sealed class SharePointResourceUnitEstimator : IRequestCostEstimator
 
         return s_listSegments.Contains(last) ? _costs.List : _costs.Get;
     }
+
+    internal static bool IsBatch(HttpRequestMessage? request) =>
+        request is { RequestUri: { } uri }
+        && request.Method == HttpMethod.Post
+        && IsBatchPath(uri.IsAbsoluteUri ? uri.AbsolutePath : uri.OriginalString);
 
     private static bool IsBatchPath(string path) =>
         path.TrimEnd('/').EndsWith(BatchPathSuffix, StringComparison.OrdinalIgnoreCase);

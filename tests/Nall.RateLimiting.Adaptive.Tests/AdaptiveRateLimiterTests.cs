@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Nall.RateLimiting.Adaptive.Tests;
@@ -293,6 +294,37 @@ public sealed class AdaptiveRateLimiterTests
 
         limiter.Dispose();
         source.Listeners.ShouldBe(0);
+    }
+
+    [Test]
+    public void UseInstanceCount_InvalidLaterCount_LogsAndKeepsTheCount()
+    {
+        var logger = new ListLogger();
+        using var limiter = new AdaptiveRateLimiter(
+            NewName(),
+            new() { InitialUnitsPerMinute = 1200 },
+            timeProvider: _time,
+            logger: logger
+        );
+        var source = new ManualInstanceCountSource(2);
+        limiter.UseInstanceCount(source);
+
+        source.Set(1000);
+
+        limiter.InstanceCount.ShouldBe(2);
+        logger.Entries.ShouldHaveSingleItem().ShouldContain("1000");
+    }
+
+    [Test]
+    public void UpdateOptions_AfterSetInstanceCount_KeepsTheCount()
+    {
+        using var limiter = Create(new() { InitialUnitsPerMinute = 1200 });
+        limiter.SetInstanceCount(3);
+
+        limiter.UpdateOptions(new() { InitialUnitsPerMinute = 1200, InstanceCount = 1 });
+
+        limiter.InstanceCount.ShouldBe(3);
+        limiter.UnitsPerMinute.ShouldBe(400);
     }
 
     [Test]
@@ -640,5 +672,23 @@ public sealed class AdaptiveRateLimiterTests
         {
             public void Dispose() => dispose();
         }
+    }
+
+    private sealed class ListLogger : ILogger
+    {
+        public List<string> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        ) => Entries.Add(formatter(state, exception));
     }
 }

@@ -5,6 +5,7 @@ Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.Name.get -> 
 Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.Services.get -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithController(Nall.RateLimiting.Adaptive.IRateController! controller) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
 Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithController<T>() -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithDefaults(System.Action<Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions!>! defaults) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
 Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithCostEstimator(Nall.RateLimiting.Adaptive.IRequestCostEstimator! estimator) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
 Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithCostEstimator<T>() -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
 Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithInstanceCount(Nall.RateLimiting.Adaptive.IInstanceCountSource! source) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
@@ -42,8 +43,9 @@ const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.ThrottledInstrument 
 const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.UnitsInstrument = "ratelimit.adaptive.units" -> string!
 const Nall.RateLimiting.Adaptive.AdaptiveRateLimiterMetrics.WaitInstrument = "ratelimit.adaptive.wait" -> string!
 Nall.RateLimiting.Adaptive.AdaptiveRateLimiter
-Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.AdaptiveRateLimiter(string! name, Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions! options, Nall.RateLimiting.Adaptive.IRateController? controller = null, Nall.RateLimiting.Adaptive.IThrottleClassifier? throttleClassifier = null, System.TimeProvider? timeProvider = null, System.Diagnostics.Metrics.IMeterFactory? meterFactory = null) -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.AdaptiveRateLimiter(string! name, Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions! options, Nall.RateLimiting.Adaptive.IRateController? controller = null, Nall.RateLimiting.Adaptive.IThrottleClassifier? throttleClassifier = null, System.TimeProvider? timeProvider = null, System.Diagnostics.Metrics.IMeterFactory? meterFactory = null, Microsoft.Extensions.Logging.ILogger? logger = null) -> void
 Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.Dispose() -> void
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.Enabled.get -> bool
 Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.InstanceCount.get -> int
 Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.Name.get -> string!
 Nall.RateLimiting.Adaptive.AdaptiveRateLimiter.OnResponseAsync(System.Net.Http.HttpResponseMessage! response, Nall.RateLimiting.Adaptive.RequestCost cost, long sentAt, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask

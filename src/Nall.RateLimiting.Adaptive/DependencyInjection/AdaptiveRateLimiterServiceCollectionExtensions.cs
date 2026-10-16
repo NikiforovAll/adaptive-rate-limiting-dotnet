@@ -132,7 +132,8 @@ public static partial class AdaptiveRateLimiterServiceCollectionExtensions
         services.AddOptions();
         services.AddSingleton<IConfigureOptions<AdaptiveRateLimiterOptions>>(sp => new BindSection(
             name,
-            section(sp)
+            section(sp),
+            sp.GetRequiredService<IOptionsMonitor<AdaptiveRateLimiterRegistration>>()
         ));
         services.AddSingleton<IOptionsChangeTokenSource<AdaptiveRateLimiterOptions>>(
             sp => new SectionChangeTokenSource(name, section(sp))
@@ -147,13 +148,17 @@ public static partial class AdaptiveRateLimiterServiceCollectionExtensions
         var registration = services
             .GetRequiredService<IOptionsMonitor<AdaptiveRateLimiterRegistration>>()
             .Get(name);
+        var logger = services
+            .GetService<ILoggerFactory>()
+            ?.CreateLogger(typeof(AdaptiveRateLimiter).FullName!);
         var limiter = new AdaptiveRateLimiter(
             name,
             monitor.Get(name),
             registration.Controller?.Invoke(services),
             registration.ThrottleClassifier?.Invoke(services),
             services.GetService<TimeProvider>(),
-            services.GetService<IMeterFactory>()
+            services.GetService<IMeterFactory>(),
+            logger
         );
 
         try
@@ -163,9 +168,6 @@ public static partial class AdaptiveRateLimiterServiceCollectionExtensions
                 limiter.UseInstanceCount(source(services));
             }
 
-            var logger = services
-                .GetService<ILoggerFactory>()
-                ?.CreateLogger(typeof(AdaptiveRateLimiter).FullName!);
             var subscription = monitor.OnChange(
                 (options, changed) =>
                 {
@@ -208,12 +210,21 @@ public static partial class AdaptiveRateLimiterServiceCollectionExtensions
     )]
     private static partial void LogInvalidOptions(ILogger logger, Exception exception, string name);
 
-    private sealed class BindSection(string name, IConfiguration? section)
-        : IConfigureNamedOptions<AdaptiveRateLimiterOptions>
+    private sealed class BindSection(
+        string name,
+        IConfiguration? section,
+        IOptionsMonitor<AdaptiveRateLimiterRegistration> registrations
+    ) : IConfigureNamedOptions<AdaptiveRateLimiterOptions>
     {
         public void Configure(string? optionsName, AdaptiveRateLimiterOptions options)
         {
-            if (optionsName == name && section is not null)
+            if (optionsName != name)
+            {
+                return;
+            }
+
+            registrations.Get(name).Defaults?.Invoke(options);
+            if (section is not null)
             {
                 AdaptiveRateLimiterOptionsBinder.Bind(section, options);
             }

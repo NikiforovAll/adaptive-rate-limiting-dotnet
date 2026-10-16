@@ -1,4 +1,6 @@
 using System.Diagnostics.Metrics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nall.RateLimiting.Adaptive;
 
@@ -14,10 +16,11 @@ namespace Nall.RateLimiting.Adaptive;
 /// request sent before the last cut does not cut again: it says nothing about the new rate. The
 /// limiter is thread-safe; share one instance for one budget.
 /// </remarks>
-public sealed class AdaptiveRateLimiter : IDisposable
+public sealed partial class AdaptiveRateLimiter : IDisposable
 {
     private readonly Lock _lock = new();
     private readonly TimeProvider _time;
+    private readonly ILogger _logger;
     private readonly IRateController? _customController;
     private readonly IThrottleClassifier? _customClassifier;
     private readonly HttpThrottleClassifier _statusClassifier;
@@ -28,7 +31,7 @@ public sealed class AdaptiveRateLimiter : IDisposable
     private AdaptiveRateLimiterOptions _options;
     private IRateController _controller;
     private IDisposable? _instanceSubscription;
-    private bool _instanceSourceAttached;
+    private bool _instanceCountSet;
     private int _instanceCount;
     private double _rate;
     private double _rateBeforeLastDecrease;
@@ -57,6 +60,7 @@ public sealed class AdaptiveRateLimiter : IDisposable
     /// <param name="meterFactory">
     /// Creates the meter. If null, the limiter uses a static meter with the same name.
     /// </param>
+    /// <param name="logger">Logs a live instance count that the limiter ignores. None if null.</param>
     /// <exception cref="ArgumentOutOfRangeException">The settings are not valid.</exception>
     public AdaptiveRateLimiter(
         string name,
@@ -64,7 +68,8 @@ public sealed class AdaptiveRateLimiter : IDisposable
         IRateController? controller = null,
         IThrottleClassifier? throttleClassifier = null,
         TimeProvider? timeProvider = null,
-        IMeterFactory? meterFactory = null
+        IMeterFactory? meterFactory = null,
+        ILogger? logger = null
     )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -77,6 +82,7 @@ public sealed class AdaptiveRateLimiter : IDisposable
         _options = copy;
         _instanceCount = copy.InstanceCount;
         _time = timeProvider ?? TimeProvider.System;
+        _logger = logger ?? NullLogger.Instance;
         _customController = controller;
         _customClassifier = throttleClassifier;
         _statusClassifier = new HttpThrottleClassifier(_time);
@@ -130,7 +136,10 @@ public sealed class AdaptiveRateLimiter : IDisposable
         }
     }
 
-    internal bool Enabled => Volatile.Read(ref _options).Enabled;
+    /// <summary>
+    /// True when the limiter limits requests. See <see cref="AdaptiveRateLimiterOptions.Enabled"/>.
+    /// </summary>
+    public bool Enabled => Volatile.Read(ref _options).Enabled;
 
     internal int QueuedCount => _bucket.QueuedCount;
 
@@ -218,7 +227,8 @@ public sealed class AdaptiveRateLimiter : IDisposable
 
     /// <summary>
     /// Changes the number of processes that share the budget. The current rate is scaled to the
-    /// new share, so the rate found for the whole budget is kept.
+    /// new share, so the rate found for the whole budget is kept. After this call,
+    /// <see cref="AdaptiveRateLimiterOptions.InstanceCount"/> no longer applies.
     /// </summary>
     /// <param name="instanceCount">The number of processes. One or more.</param>
     /// <exception cref="ArgumentOutOfRangeException">
@@ -232,6 +242,7 @@ public sealed class AdaptiveRateLimiter : IDisposable
         lock (_lock)
         {
             ApplyInstanceCount(instanceCount);
+            _instanceCountSet = true;
         }
     }
 
@@ -241,8 +252,8 @@ public sealed class AdaptiveRateLimiter : IDisposable
     /// <see cref="AdaptiveRateLimiterOptions.InstanceCount"/> no longer applies.
     /// </summary>
     /// <remarks>
-    /// A later count that is not valid for the settings is ignored, and the limiter keeps the
-    /// count it has.
+    /// A later count that is not valid for the settings is logged and ignored, and the limiter
+    /// keeps the count it has.
     /// </remarks>
     /// <param name="source">The live instance count.</param>
     /// <exception cref="ArgumentOutOfRangeException">
@@ -259,13 +270,15 @@ public sealed class AdaptiveRateLimiter : IDisposable
             {
                 SetInstanceCount(count);
             }
-            catch (ArgumentOutOfRangeException) { }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                LogInvalidInstanceCount(_logger, ex, Name, count);
+            }
         });
         lock (_lock)
         {
             _instanceSubscription?.Dispose();
             _instanceSubscription = subscription;
-            _instanceSourceAttached = true;
             if (_disposed)
             {
                 subscription?.Dispose();
@@ -288,7 +301,7 @@ public sealed class AdaptiveRateLimiter : IDisposable
         var copy = options.Clone();
         lock (_lock)
         {
-            var instanceCount = _instanceSourceAttached ? _instanceCount : copy.InstanceCount;
+            var instanceCount = _instanceCountSet ? _instanceCount : copy.InstanceCount;
             copy.Validate(instanceCount);
             var controller = _customController ?? copy.CreateController();
 
@@ -437,6 +450,18 @@ public sealed class AdaptiveRateLimiter : IDisposable
             SetRate(rate);
         }
     }
+
+    [LoggerMessage(
+        EventId = 2,
+        Level = LogLevel.Warning,
+        Message = "Rate limiter '{Name}' ignores the instance count {Count}: it is not valid for the settings."
+    )]
+    private static partial void LogInvalidInstanceCount(
+        ILogger logger,
+        Exception exception,
+        string name,
+        int count
+    );
 
     private static double BucketRate(double unitsPerMinute) =>
         Math.Max(unitsPerMinute / 60, double.Epsilon);

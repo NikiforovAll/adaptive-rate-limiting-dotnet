@@ -5,8 +5,8 @@ namespace Nall.RateLimiting.Adaptive;
 /// </summary>
 /// <remarks>
 /// The rates are for the whole budget. Each of the <see cref="InstanceCount"/> processes has its
-/// own limiter and takes an equal share. The defaults fit a SharePoint app through Microsoft
-/// Graph, where a unit is a resource unit.
+/// own limiter and takes an equal share. The default rates are a start point only: set
+/// <see cref="MaxUnitsPerMinute"/> below the budget of your API.
 /// </remarks>
 public sealed class AdaptiveRateLimiterOptions
 {
@@ -26,20 +26,20 @@ public sealed class AdaptiveRateLimiterOptions
     /// <summary>
     /// The rate at the start.
     /// </summary>
-    public double InitialUnitsPerMinute { get; set; } = 1500;
+    public double InitialUnitsPerMinute { get; set; } = 600;
 
     /// <summary>
     /// The lowest rate. At the share of one process, a request of
     /// <see cref="MaxRequestUnits"/> must still get its units within <see cref="MaxWait"/>.
     /// </summary>
-    public double MinUnitsPerMinute { get; set; } = 200;
+    public double MinUnitsPerMinute { get; set; } = 60;
 
     /// <summary>
     /// The highest rate. Set it below the published limit of the server: estimated costs are
     /// not exact, and a cap at the full limit lets the rate climb into a throttle in each long
     /// burst.
     /// </summary>
-    public double MaxUnitsPerMinute { get; set; } = 5625;
+    public double MaxUnitsPerMinute { get; set; } = 1200;
 
     /// <summary>
     /// A burst of throttled responses cuts the rate once in this period, not once for each
