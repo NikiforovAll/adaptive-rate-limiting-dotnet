@@ -4,7 +4,6 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "reference": "node scripts/api-reference.mjs",
     "simulate": "node scripts/simulate.mjs",
     "dev": "astro dev",
     "start": "astro dev",

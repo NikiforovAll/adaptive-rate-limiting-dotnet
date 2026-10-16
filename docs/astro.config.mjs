@@ -43,12 +43,22 @@ export default defineConfig({
 						{ slug: 'guide/troubleshooting' },
 					],
 				},
+			],
+			customCss: ['./src/styles/custom.css'],
+			head: [
+				{ tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
+				{ tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' } },
 				{
-					label: 'API reference',
-					collapsed: true,
-					items: [{ autogenerate: { directory: 'reference' } }],
+					tag: 'link',
+					attrs: {
+						rel: 'stylesheet',
+						href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap',
+					},
 				},
 			],
+			components: {
+				Hero: './src/components/landing/Hero.astro',
+			},
 		}),
 	],
 });

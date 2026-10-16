@@ -25,11 +25,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-
       - name: Install Node
         uses: actions/setup-node@v4
         with:
@@ -37,17 +32,8 @@ jobs:
           cache: npm
           cache-dependency-path: docs/package-lock.json
 
-      - name: Dotnet Tool Restore
-        run: dotnet tool restore
-
-      - name: Dotnet Build
-        run: dotnet build adaptive-rate-limiting-dotnet.slnx --configuration Release
-
       - name: Npm Install
         run: npm ci --prefix docs
-
-      - name: API Reference
-        run: npm run reference --prefix docs
 
       - name: Astro Build
         run: npm run build --prefix docs

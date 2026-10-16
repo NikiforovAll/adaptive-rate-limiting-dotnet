@@ -2,109 +2,12 @@
 title: Nall.RateLimiting.Adaptive
 description: Adaptive client-side rate limiting for .NET HttpClient, with pluggable rate controllers.
 template: splash
+editUrl: false
+lastUpdated: false
 hero:
-  tagline: Find the rate that an API allows, and stay under it. The client slows down on 429, honors Retry-After, and climbs back when the server allows it.
-  actions:
-    - text: Get started
-      link: /adaptive-rate-limiting-dotnet/guide/getting-started/
-      icon: right-arrow
-    - text: Open the simulator
-      link: /adaptive-rate-limiting-dotnet/guide/playground/
-      icon: rocket
-      variant: secondary
-    - text: GitHub
-      link: https://github.com/NikiforovAll/adaptive-rate-limiting-dotnet
-      icon: external
-      variant: minimal
+  tagline: Find the rate that an API allows, and stay under it.
 ---
 
-import { Card, CardGrid, LinkCard, Steps } from '@astrojs/starlight/components';
+import Landing from '../../components/landing/Landing.astro';
 
-Many APIs have a quota that you cannot see. You learn the limit only when the server answers `429 Too Many Requests`. A retry policy sends the request again, but it does not send less. `Nall.RateLimiting.Adaptive` puts a token bucket in front of your `HttpClient`. Each request waits for its units. A throttled response cuts the rate and pauses for the `Retry-After`. Successful requests that had to wait raise the rate again. The client stays near the real limit with few 429s, and it adapts when the limit changes.
-
-## Features
-
-<CardGrid>
-	<Card title="Adaptive rate" icon="random">
-		The rate goes down on a throttle and up again after success. It stays between a minimum and a maximum that you set.
-	</Card>
-	<Card title="Retry-After pause" icon="seti:clock">
-		A throttle with `Retry-After` holds back all requests of the limiter, up to `MaxPause`.
-	</Card>
-	<Card title="Pluggable controllers" icon="setting">
-		AIMD (default) and CUBIC are built in. Write an `IRateController` for your own curve.
-	</Card>
-	<Card title="Request cost" icon="seti:pipeline">
-		A request can cost more than one unit. An `IRequestCostEstimator` tells the cost of each request.
-	</Card>
-	<Card title="Shared budget" icon="seti:folder">
-		Several processes split one budget. Set a static count, or give a live `IInstanceCountSource`.
-	</Card>
-	<Card title="Metrics" icon="seti:graphql">
-		Units, throttles, rejections, wait time, rate, queue and instances, on `System.Diagnostics.Metrics`.
-	</Card>
-	<Card title="Configuration and DI" icon="list-format">
-		Named limiters bind from `IConfiguration` and reload on change. The binding does not use reflection.
-	</Card>
-	<Card title="Microsoft Graph" icon="seti:json">
-		SharePoint resource-unit costs, `$batch` and CSOM support, in a separate package.
-	</Card>
-</CardGrid>
-
-## Quick start in 30 seconds
-
-<Steps>
-
-1. Add the package.
-
-   ```bash
-   dotnet add package Nall.RateLimiting.Adaptive
-   ```
-
-2. Register a named limiter, and add its handler to an `HttpClient`.
-
-   ```csharp title="Program.cs"
-   builder.Services.AddAdaptiveRateLimiter("orders-api");
-
-   builder
-       .Services.AddHttpClient<OrdersClient>(c =>
-           c.BaseAddress = new Uri("https://api.example.com/")
-       )
-       .AddAdaptiveRateLimitHandler("orders-api");
-   ```
-
-3. Set the rates for the API in `appsettings.json`. Rates are in units per minute. By default, one request is one unit.
-
-   ```json title="appsettings.json"
-   {
-     "AdaptiveRateLimiting": {
-       "Limiters": {
-         "orders-api": {
-           "InitialUnitsPerMinute": 600,
-           "MinUnitsPerMinute": 60,
-           "MaxUnitsPerMinute": 1200
-         }
-       }
-     }
-   }
-   ```
-
-</Steps>
-
-Requests through `OrdersClient` now wait for the limiter, and the limiter learns from each response.
-
-## Packages
-
-| Package | Use |
-| --- | --- |
-| `Nall.RateLimiting.Adaptive` | The limiter, the `HttpClient` handler, the AIMD and CUBIC controllers, DI registration and metrics. |
-| `Nall.RateLimiting.Adaptive.MicrosoftGraph` | SharePoint resource-unit costs for Graph requests and `$batch`, throttled inner `$batch` responses, CSOM and the Graph handler pipeline. |
-
-## Next steps
-
-<CardGrid>
-	<LinkCard title="Why adaptive rate limiting" description="Why retry alone does not keep a client under a quota." href="/adaptive-rate-limiting-dotnet/guide/why/" />
-	<LinkCard title="How it works" description="The bucket, the controller loop and the pause, with a live simulator." href="/adaptive-rate-limiting-dotnet/guide/how-it-works/" />
-	<LinkCard title="Rate controllers" description="AIMD and CUBIC side by side, and how to choose." href="/adaptive-rate-limiting-dotnet/guide/controllers/" />
-	<LinkCard title="Configuration" description="Every option, its default and its limits." href="/adaptive-rate-limiting-dotnet/guide/configuration/" />
-</CardGrid>
+<Landing />
