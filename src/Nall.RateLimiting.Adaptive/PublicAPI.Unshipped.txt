@@ -1,1 +1,8 @@
 #nullable enable
+Nall.RateLimiting.Adaptive.AdaptiveTokenBucket
+Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.AdaptiveTokenBucket(double tokensPerSecond, System.TimeSpan burst, int queueLimit, System.TimeProvider? timeProvider = null) -> void
+Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.Pause(System.TimeSpan duration) -> void
+Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.ResetWaited() -> bool
+Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.SetRate(double tokensPerSecond) -> void
+override Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.GetStatistics() -> System.Threading.RateLimiting.RateLimiterStatistics?
+override Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.IdleDuration.get -> System.TimeSpan?
