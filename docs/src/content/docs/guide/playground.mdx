@@ -9,10 +9,20 @@ import RateLimitSimulator from '../../../components/RateLimitSimulator.astro';
 
 <span class="wide-page" hidden></span>
 
-The simulator runs a model of the limiter in your browser. Choose a story, a mode, the number of instances, the hidden quota and the demand. Then watch the queues, the buckets and the quota. Below the live view, all modes race through the same story. At the bottom, change the limiter options and export your settings.
+The simulator runs a model of the limiter in your browser, against a model API with a hidden quota. First, the race shows how all modes do in one story. Then the live run shows one mode step by step, so you can see why.
+
+## The race
+
+The race runs all four modes through the story on the same seed, so each mode sees the same requests at the same times. The bars show the units that the API accepted so far. More units is not the only goal: "No limiter" gets many units, but with tens of thousands of throttles. Press **Run the race** to replay it, or **Show the result** for the table. A change to the story, the instances, the quota or the demand runs the race again. The race uses the default limiter options.
+
+<RateLimitSimulator view="compare" stories instances={2} quota={3000} demand={2000} />
+
+## The live run
+
+The race shows the result, but not the cause. The live run shows one mode at a time: the queues, the buckets, the quota and each rule that fires. Choose a story, a mode, the number of instances, the hidden quota and the demand. At the bottom, change the limiter options and export your settings.
 
 <RateLimitSimulator
-	view="both"
+	view="live"
 	mode="aimd"
 	instances={2}
 	quota={3000}
@@ -55,10 +65,6 @@ The marks on the live chart show the rules of the limiter. Point at a mark to re
 | Red bar at the top | A pause for the `Retry-After`, up to `MaxPause`. |
 | Up triangle | The rate reached the `MaxUnitsPerMinute` share. |
 | Circle at the top | A story event. |
-
-## The race
-
-The race runs all four modes through the story on the same seed, so each mode sees the same requests at the same times. The bars show the units that the API accepted so far. More units is not the only goal: "No limiter" gets many units, but with tens of thousands of throttles. Press **Run the race** to replay it, or **Show the result** for the table.
 
 ## Export the settings
 

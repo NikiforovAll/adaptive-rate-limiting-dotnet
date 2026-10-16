@@ -402,6 +402,9 @@ function mount(el) {
 		render();
 		changed();
 	});
+	if (!live && $('compare')) {
+		for (const c of [controls.story, controls.instances, controls.quota, controls.demand]) c?.addEventListener('change', () => runRace(false));
+	}
 	$('compare-run')?.addEventListener('click', () => runRace(true));
 	$('compare-skip')?.addEventListener('click', () => {
 		if (raceState && raceState.cursor < raceState.plan.duration) {
@@ -442,7 +445,8 @@ function mount(el) {
 			if (next && next !== width) {
 				width = next;
 				render();
-				if (raceState) drawRace($('compare'), raceState.results, raceState.plan, raceState.cursor, width);			}
+				if (raceState) drawRace($('compare'), raceState.results, raceState.plan, raceState.cursor, width);
+			}
 		}, 80);
 	}).observe(el);
 

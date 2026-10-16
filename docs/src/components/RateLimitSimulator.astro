@@ -215,7 +215,7 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 	{
 		showCompare && (
 			<div class="sim-compare" data-role="compare">
-				<p class="sim-section">The race</p>
+				{showLive && <p class="sim-section">The race</p>}
 				<div class="sim-buttons">
 					<button type="button" class="sim-btn sim-primary" data-role="compare-run">
 						Run the race
