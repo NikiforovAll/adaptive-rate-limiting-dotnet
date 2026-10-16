@@ -9,21 +9,26 @@ import RateLimitSimulator from '../../../components/RateLimitSimulator.astro';
 
 <span class="wide-page" hidden></span>
 
-The simulator runs a model of the limiter in your browser. Choose a mode, the number of instances, the hidden quota and the demand. Then watch the queues, the buckets and the quota.
+The simulator runs a model of the limiter in your browser, against a model API with a hidden quota. First, the race shows how all modes do in one story. Then the live run shows one mode step by step, so you can see why.
+
+## The race
+
+The race runs all four modes through the story on the same seed, so each mode sees the same requests at the same times. The bars show the units that the API accepted so far. More units is not the only goal: "No limiter" gets many units, but with tens of thousands of throttles. Press **Run the race** to replay it, or **Show the result** for the table. A change to the story, the instances, the quota or the demand runs the race again. The race uses the default limiter options.
+
+<RateLimitSimulator view="compare" stories instances={2} quota={3000} demand={2000} />
+
+## The live run
+
+The race shows the result, but not the cause. The live run shows one mode at a time: the queues, the buckets, the quota and each rule that fires. Choose a story, a mode, the number of instances, the hidden quota and the demand. At the bottom, change the limiter options and export your settings.
 
 <RateLimitSimulator
-	view="both"
+	view="live"
 	mode="aimd"
 	instances={2}
 	quota={3000}
 	demand={2000}
-	presets={[
-		{ label: 'Find the limit', text: 'AIMD climbs in steps until the first 429, then cuts by 30%.', button: 'AIMD', set: { mode: 'aimd', instances: 2, quota: 3000, demand: 2000 } },
-		{ label: 'Fast climb', text: 'CUBIC gets to the maximum in seconds, and gets more 429s.', button: 'CUBIC', set: { mode: 'cubic', instances: 2, quota: 3000, demand: 2000 } },
-		{ label: 'A noisy neighbor', text: 'Another client takes half of the quota for 60 seconds.', button: 'Drop the quota', set: { drop: true } },
-		{ label: 'Retry only', text: 'No limiter. Each instance sends at once and retries after Retry-After.', button: 'No limiter', set: { mode: 'none' } },
-		{ label: 'Light load', text: 'The demand is below the quota. The rate does not climb, because no request waits.', button: 'Light load', set: { mode: 'aimd', demand: 600 } },
-	]}
+	stories
+	tools
 />
 
 ## Controls
@@ -31,25 +36,41 @@ The simulator runs a model of the limiter in your browser. Choose a mode, the nu
 | Control | Effect |
 | --- | --- |
 | Pause, Play | Stops and starts the run. With reduced motion turned on in your system, the run starts paused. |
-| Reset | Starts a new run with the current settings. |
-| Quota drop | Another client takes half of the quota for 60 seconds. |
+| Reset | Starts a new run with the current settings and seed. |
+| Quota drop | Another client takes half of the quota for 60 seconds, now. |
+| Story | A script of events: a noisy neighbor, a quota cut, a scale-out, a burst of demand or an outage. A change starts a new run. |
 | Mode | No limiter, a fixed rate of 1,500 units per minute, AIMD or CUBIC. A change starts a new run. |
-| Instances | 1 to 3 processes that share the quota. |
+| Instances | 1 to 4 processes that share the quota. |
 | Speed | Simulated seconds per real second. |
 | Hidden quota | The units per minute that the model API allows. The limiters cannot see it. |
 | Demand per instance | The units per minute that each instance wants to send. |
+| Seed | Sets the request times and costs. The same seed and settings give the same run. |
+| Copy link | Copies a link that keeps the settings, the seed and the options. |
 
-The comparison below the live view runs all modes for 15 simulated minutes on one seed, with a quota drop after 5 minutes.
+## Read the chart
+
+The marks on the live chart show the rules of the limiter. Point at a mark to read the rule that fired. On a touch screen, tap the mark. With a keyboard, focus the chart and press the arrow keys.
+
+| Mark | Meaning |
+| --- | --- |
+| Down triangle | A cut. The tooltip shows the rule and the new rate, and how many more throttles did not cut again because of `DecreaseCooldown`. |
+| Red bar at the top | A pause for the `Retry-After`, up to `MaxPause`. |
+| Up triangle | The rate reached the `MaxUnitsPerMinute` share. |
+| Circle at the top | A story event. |
+
+## Export the settings
+
+The export shows your settings as `appsettings.json` or as C# options code for a limiter named `api`. It always shows the three rates, and the other options that differ from the defaults. Change the rates to the units of your API before you use them.
 
 ## The model
 
 | Part | Model |
 | --- | --- |
-| API | A sliding window of 60 seconds. A request that would go over the quota gets 429 with a `Retry-After` of the seconds until there is room. A throttled request uses no quota. |
+| API | A sliding window of 60 seconds. A request that would go over the quota gets 429 with a `Retry-After` of the seconds until there is room. A throttled request uses no quota. In an outage, each request gets 503 with a `Retry-After` to the end of the outage. |
 | Requests | Each instance makes requests at random times, at the demand rate. A request costs 1, 2 or 5 units (6 of 10 cost 1, 3 cost 2, 1 costs 5). |
 | Network | A fixed time of 0.2 seconds from send to response. |
 | Retry | A retry handler outside the limiter sends a throttled request again after its `Retry-After`, up to 3 times. |
-| Limiter | The rules of `AdaptiveRateLimiter`, `AdaptiveTokenBucket`, `AimdController` and `CubicController`, with the default options and the SharePoint default rates (1,500, 200 and 5,625 units per minute). |
+| Limiter | The rules of `AdaptiveRateLimiter`, `AdaptiveTokenBucket`, `AimdController` and `CubicController`. It starts with the default options and the SharePoint default rates (1,500, 200 and 5,625 units per minute), or with the options that you set. |
 | Fixed rate | A token bucket at the initial rate share, without cuts and without the pause. |
 
 <Aside>

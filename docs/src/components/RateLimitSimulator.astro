@@ -1,5 +1,8 @@
 ---
+import { MAX_INSTANCES, STORIES } from './simulator/engine.js';
+
 type Mode = 'none' | 'fixed' | 'aimd' | 'cubic';
+type Story = keyof typeof STORIES;
 
 interface Preset {
 	label: string;
@@ -10,6 +13,7 @@ interface Preset {
 		instances?: number;
 		quota?: number;
 		demand?: number;
+		story?: Story;
 		drop?: boolean;
 		reset?: boolean;
 		options?: Record<string, unknown>;
@@ -27,6 +31,12 @@ interface Props {
 	options?: Record<string, unknown>;
 	presets?: Preset[];
 	caption?: string;
+	/** Shows the story picker. The race then runs the chosen story. */
+	stories?: boolean;
+	story?: Story;
+	/** Shows the seed, the options editor, the export, and keeps the state in the URL hash. */
+	tools?: boolean;
+	seed?: number;
 }
 
 const labels: Record<Mode, string> = { none: 'No limiter', fixed: 'Fixed rate', aimd: 'AIMD', cubic: 'CUBIC' };
@@ -41,11 +51,16 @@ const {
 	options = {},
 	presets = [],
 	caption,
+	stories = false,
+	story = stories ? 'neighbor' : 'free',
+	tools = false,
+	seed = 42,
 } = Astro.props;
 
 const showLive = view !== 'compare';
 const showCompare = view !== 'live';
-const config = JSON.stringify({ mode, instances, quota, demand, options, compareModes });
+const counts = Array.from({ length: MAX_INSTANCES }, (_, i) => i + 1);
+const config = JSON.stringify({ mode, instances, quota, demand, options, compareModes, story, tools });
 ---
 
 <figure class="rate-sim not-content" data-rate-sim data-config={config}>
@@ -79,10 +94,24 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 				</label>
 			)
 		}
+		{
+			stories && (
+				<label>
+					Story
+					<select data-role="story">
+						{Object.entries(STORIES).map(([key, s]) => (
+							<option value={key} selected={key === story}>
+								{s.label}
+							</option>
+						))}
+					</select>
+				</label>
+			)
+		}
 		<label>
 			Instances
 			<select data-role="instances">
-				{[1, 2, 3].map((n) => <option value={n} selected={n === instances}>{n}</option>)}
+				{counts.map((n) => <option value={n} selected={n === instances}>{n}</option>)}
 			</select>
 		</label>
 		{
@@ -109,11 +138,28 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 			<input data-role="demand" type="range" min="200" max="5000" step="100" value={demand} />
 			<output data-role="demand-value">{demand}</output>
 		</label>
+		{
+			tools && (
+				<div class="sim-buttons">
+					<label>
+						Seed
+						<input class="sim-seed" data-role="seed" type="number" min="1" step="1" value={seed} inputmode="numeric" />
+					</label>
+					<button type="button" class="sim-btn" data-role="new-seed" title="A new random seed: other arrival times and costs">
+						New seed
+					</button>
+					<button type="button" class="sim-btn" data-role="copy-link" title="Copy a link with these settings">
+						Copy link
+					</button>
+				</div>
+			)
+		}
 	</div>
 
 	{
 		showLive && (
 			<div data-role="live">
+				<p class="sim-story" data-role="story-status" aria-live="polite" />
 				<svg class="sim-svg" data-role="pipeline" role="img" aria-label="Live view of the queues, buckets and the shared quota" />
 				<div class="sim-legend" aria-hidden="true">
 					<span>
@@ -140,7 +186,7 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 						<dd data-tile="rate">0</dd>
 					</div>
 					<div>
-						<dt>429s</dt>
+						<dt>Throttled</dt>
 						<dd data-tile="throttled">0</dd>
 					</div>
 					<div>
@@ -156,7 +202,10 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 						<dd data-tile="rejected">0</dd>
 					</div>
 				</dl>
-				<svg class="sim-svg" data-role="chart" role="img" aria-label="Rate chart" />
+				<div class="sim-chart">
+					<svg class="sim-svg" data-role="chart" role="img" tabindex="0" aria-label="Rate chart" />
+					<div class="sim-tip" data-role="tip" role="status" hidden />
+				</div>
 				<div class="sim-legend" data-role="legend" aria-hidden="true" />
 				<pre class="sim-log" data-role="log" aria-hidden="true" />
 			</div>
@@ -166,16 +215,54 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 	{
 		showCompare && (
 			<div class="sim-compare" data-role="compare">
+				{showLive && <p class="sim-section">The race</p>}
 				<div class="sim-buttons">
 					<button type="button" class="sim-btn sim-primary" data-role="compare-run">
-						Run the comparison
+						Run the race
 					</button>
-					<span class="sim-note" data-role="compare-note" />
+					<button type="button" class="sim-btn" data-role="compare-skip">
+						Show the result
+					</button>
 				</div>
-				<svg class="sim-svg" data-role="compare-chart" role="img" aria-label="Comparison chart" />
+				<p class="sim-note" data-role="compare-note" />
+				<div class="race-board" data-role="compare-board" aria-live="off" />
+				<svg class="sim-svg" data-role="compare-chart" role="img" aria-label="Race chart" />
 				<div class="sim-legend" data-role="compare-legend" aria-hidden="true" />
 				<div class="sim-table">
 					<table data-role="compare-table" />
+				</div>
+			</div>
+		)
+	}
+
+	{
+		tools && (
+			<div class="sim-tools">
+				<details class="sim-panel">
+					<summary>Limiter options</summary>
+					<p class="sim-note">A change starts a new run. Changed values are marked. The checks are the checks of the library.</p>
+					<div class="sim-options" data-role="options" />
+					<p class="sim-error" data-role="options-error" role="alert" />
+					<button type="button" class="sim-btn" data-role="options-reset">
+						Reset the options
+					</button>
+				</details>
+
+				<div class="sim-panel">
+					<p class="sim-section">Export the settings</p>
+					<div class="sim-buttons" role="group" aria-label="Format">
+						<button type="button" class="sim-btn" data-export="json" aria-pressed="true">
+							appsettings.json
+						</button>
+						<button type="button" class="sim-btn" data-export="cs" aria-pressed="false">
+							C#
+						</button>
+						<button type="button" class="sim-btn" data-role="export-copy">
+							Copy
+						</button>
+					</div>
+					<pre class="sim-code"><code data-role="export-code" /></pre>
+					<p class="sim-note" data-role="export-note" />
 				</div>
 			</div>
 		)
@@ -217,6 +304,7 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 		--sim-i1: var(--sl-color-blue);
 		--sim-i2: var(--sl-color-purple);
 		--sim-i3: var(--sl-color-green);
+		--sim-i4: var(--sl-color-orange);
 		--sim-none: var(--sl-color-gray-3);
 		--sim-fixed: var(--sl-color-orange);
 		--sim-aimd: var(--sl-color-blue);
@@ -324,7 +412,6 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 	}
 	.sim-log {
 		margin: 0.5rem 0 0;
-		min-height: 4.6em;
 		padding: 0;
 		background: none;
 		border: 0;
@@ -332,6 +419,9 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 		color: var(--sl-color-gray-3);
 		white-space: pre-wrap;
 		overflow: hidden;
+	}
+	.sim-log:empty {
+		display: none;
 	}
 	.sim-compare {
 		margin-top: 1rem;
@@ -562,12 +652,312 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 		height: 10px;
 		background: color-mix(in srgb, var(--sim-red) 20%, transparent);
 	}
+	.rate-sim :global(.s-i4) {
+		stroke: var(--sim-i4);
+		fill: var(--sim-i4);
+		--k: var(--sim-i4);
+	}
+	.rate-sim :global(path.st-series.s-i4) {
+		fill: none;
+	}
+
+	.sim-story {
+		margin: 0 0 0.25rem;
+		min-height: 1.4em;
+		color: var(--sl-color-gray-2);
+	}
+	.sim-story:empty {
+		display: none;
+	}
+	.sim-story :global(.sim-clock) {
+		font-family: var(--sl-font-mono);
+		font-variant-numeric: tabular-nums;
+		color: var(--sl-color-gray-3);
+		white-space: nowrap;
+	}
+	.sim-seed {
+		width: 6rem;
+		font: inherit;
+		color: var(--sl-color-white);
+		background: var(--sl-color-bg);
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.4rem;
+		padding: 0.15rem 0.4rem;
+	}
+	.sim-chart {
+		position: relative;
+	}
+	.sim-chart svg:focus-visible {
+		outline: 2px solid var(--sl-color-accent);
+		outline-offset: 2px;
+	}
+	.sim-tip {
+		position: absolute;
+		z-index: 2;
+		width: min(20rem, 100%);
+		padding: 0.5rem 0.65rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.5rem;
+		background: var(--sl-color-bg);
+		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-xs);
+		box-shadow: var(--sl-shadow-md);
+		pointer-events: none;
+	}
+	.sim-tip :global(p) {
+		margin: 0.25rem 0 0;
+	}
+	.sim-tip :global(.tip-head) {
+		margin: 0;
+		font-weight: 600;
+		color: var(--sl-color-white);
+	}
+	.sim-legend :global(.sim-hint) {
+		flex-basis: 100%;
+	}
+	.sim-section {
+		margin: 0 0 0.4rem;
+		font-weight: 600;
+		font-size: var(--sl-text-base);
+		color: var(--sl-color-white);
+	}
+	.sim-compare .sim-note {
+		margin: 0.4rem 0 0;
+	}
+	.race-board {
+		margin: 0.6rem 0;
+		display: grid;
+		gap: 0.3rem;
+	}
+	.race-board :global(.race-clock) {
+		margin: 0;
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+	.race-board :global(.race-clock b) {
+		font-family: var(--sl-font-mono);
+		font-variant-numeric: tabular-nums;
+		color: var(--sl-color-white);
+	}
+	.race-board :global(.race-row) {
+		display: grid;
+		grid-template-columns: 6.5rem minmax(3rem, 1fr) auto;
+		gap: 0.5rem;
+		align-items: center;
+		margin: 0;
+	}
+	.race-board :global(.race-hot) {
+		color: var(--sl-color-red-high);
+	}
+	.race-board :global(.race-badge) {
+		padding: 0 0.3rem;
+		border-radius: 0.3rem;
+		font-family: var(--sl-font);
+		background: var(--sl-color-green-low);
+		color: var(--sl-color-green-high);
+	}
+	.race-board :global(.race-name) {
+		white-space: nowrap;
+		color: var(--sl-color-white);
+	}
+	.race-board :global(.race-track) {
+		height: 0.7rem;
+		border-radius: 0.35rem;
+		background: var(--sl-color-gray-6);
+		overflow: hidden;
+	}
+	.race-board :global(.race-bar) {
+		display: block;
+		height: 100%;
+		background: var(--k);
+		border-radius: 0.35rem;
+	}
+	.race-board :global(.race-num) {
+		font-size: var(--sl-text-xs);
+		font-family: var(--sl-font-mono);
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+		line-height: 1.25;
+	}
+	.sim-tools {
+		margin-top: 1rem;
+		display: grid;
+		gap: 0.75rem;
+	}
+	.sim-panel {
+		border-top: 1px solid var(--sl-color-hairline);
+		padding-top: 0.75rem;
+		min-width: 0;
+	}
+	.sim-panel summary {
+		cursor: pointer;
+		font-weight: 600;
+		font-size: var(--sl-text-base);
+		color: var(--sl-color-white);
+	}
+	.sim-panel > .sim-note,
+	.sim-panel > p {
+		margin: 0.4rem 0;
+	}
+	.sim-options {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+		gap: 0.5rem 1rem;
+	}
+	.sim-options :global(fieldset) {
+		margin: 0;
+		padding: 0.4rem 0.6rem 0.6rem;
+		border: 1px solid var(--sl-color-hairline);
+		border-radius: 0.5rem;
+		min-width: 0;
+	}
+	.sim-options :global(legend) {
+		padding: 0 0.3rem;
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+	.sim-options :global(label) {
+		display: flex;
+		justify-content: space-between;
+		gap: 0.5rem;
+		align-items: center;
+		margin: 0.25rem 0 0;
+	}
+	.sim-options :global(label span) {
+		font-family: var(--sl-font-mono);
+		font-size: var(--sl-text-xs);
+		overflow-wrap: anywhere;
+	}
+	.sim-options :global(label.changed span) {
+		color: var(--sl-color-accent-high);
+		font-weight: 600;
+	}
+	.sim-options :global(label.changed span)::before {
+		content: '* ';
+	}
+	.sim-options :global(input) {
+		width: 6.5rem;
+		flex: none;
+		font: inherit;
+		font-family: var(--sl-font-mono);
+		color: var(--sl-color-white);
+		background: var(--sl-color-bg);
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.4rem;
+		padding: 0.1rem 0.35rem;
+	}
+	.sim-error {
+		color: var(--sl-color-red-high);
+	}
+	.sim-error:empty {
+		display: none;
+	}
+	.rate-sim [aria-pressed='true'][data-export] {
+		border-color: var(--sl-color-accent);
+		background: var(--sl-color-accent-low);
+	}
+	.sim-code {
+		margin: 0.5rem 0 0;
+		padding: 0.6rem 0.75rem;
+		max-width: 100%;
+		overflow-x: auto;
+		border: 1px solid var(--sl-color-hairline);
+		border-radius: 0.5rem;
+		background: var(--sl-color-bg);
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-white);
+	}
+	.sim-table :global(tr.pick) {
+		background: var(--sl-color-green-low);
+	}
+	.sim-table :global(tr.pick th),
+	.sim-table :global(tr.pick td) {
+		color: var(--sl-color-green-high);
+		font-weight: 600;
+	}
+
+	.rate-sim :global(.st-event) {
+		stroke: var(--sl-color-gray-3);
+		stroke-width: 1;
+		stroke-dasharray: 2 3;
+	}
+	.rate-sim :global(.st-cursor) {
+		stroke: var(--sl-color-gray-3);
+		stroke-width: 1;
+	}
+	.rate-sim :global(.mk-story) {
+		fill: var(--sl-color-bg);
+		stroke: var(--sl-color-white);
+		stroke-width: 2;
+	}
+	.rate-sim :global(.mk) {
+		stroke: var(--sl-color-bg);
+		stroke-width: 1;
+	}
+	.rate-sim :global(.mk-max) {
+		stroke: var(--sl-color-bg);
+		stroke-width: 1;
+		opacity: 0.8;
+	}
+	.rate-sim :global(.mk-pause) {
+		fill: var(--sim-red);
+	}
+	.rate-sim :global(.race-head) {
+		fill: var(--k);
+	}
+	.rate-sim :global(.k-cut),
+	.rate-sim :global(.k-max),
+	.rate-sim :global(.k-pause),
+	.rate-sim :global(.k-event) {
+		display: inline-block;
+		vertical-align: middle;
+		margin: 0 0.3rem 0 0.15rem;
+	}
+	.rate-sim :global(.k-cut) {
+		width: 0;
+		height: 0;
+		border: 5px solid transparent;
+		border-top: 8px solid var(--sl-color-gray-2);
+		border-bottom: 0;
+	}
+	.rate-sim :global(.k-max) {
+		width: 0;
+		height: 0;
+		border: 5px solid transparent;
+		border-bottom: 8px solid var(--sl-color-gray-2);
+		border-top: 0;
+	}
+	.rate-sim :global(.k-pause) {
+		width: 14px;
+		height: 3px;
+		background: var(--sim-red);
+	}
+	.rate-sim :global(.k-event) {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		border: 2px solid var(--sl-color-white);
+	}
 	@media (max-width: 40rem) {
 		.rate-sim {
 			padding: 0.75rem;
 		}
 		.sim-range input {
 			width: 7rem;
+		}
+		.race-board :global(.race-row) {
+			grid-template-columns: auto 1fr;
+			grid-template-areas: 'name num' 'track track';
+			gap: 0.2rem 0.5rem;
+		}
+		.race-board :global(.race-name) {
+			grid-area: name;
+		}
+		.race-board :global(.race-num) {
+			grid-area: num;
+		}
+		.race-board :global(.race-track) {
+			grid-area: track;
 		}
 	}
 </style>
