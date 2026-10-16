@@ -412,7 +412,6 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 	}
 	.sim-log {
 		margin: 0.5rem 0 0;
-		min-height: 4.6em;
 		padding: 0;
 		background: none;
 		border: 0;
@@ -420,6 +419,9 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 		color: var(--sl-color-gray-3);
 		white-space: pre-wrap;
 		overflow: hidden;
+	}
+	.sim-log:empty {
+		display: none;
 	}
 	.sim-compare {
 		margin-top: 1rem;
