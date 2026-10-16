@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Nall.RateLimiting.Adaptive/Nall.RateLimiting.Adaptive.csproj" />
+    <Project Path="src/Nall.RateLimiting.Adaptive.MicrosoftGraph/Nall.RateLimiting.Adaptive.MicrosoftGraph.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Nall.RateLimiting.Adaptive.Tests/Nall.RateLimiting.Adaptive.Tests.csproj" />
+    <Project Path="tests/Nall.RateLimiting.Adaptive.MicrosoftGraph.Tests/Nall.RateLimiting.Adaptive.MicrosoftGraph.Tests.csproj" />
   </Folder>
 </Solution>
