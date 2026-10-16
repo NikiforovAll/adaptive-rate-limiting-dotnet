@@ -442,6 +442,7 @@ export class QuotaServer {
 		this.used = 0;
 		this.dropUntil = -Infinity;
 		this.dropShare = 0.5;
+		this.outageUntil = -Infinity;
 	}
 
 	limit(now) {
@@ -463,6 +464,9 @@ export class QuotaServer {
 
 	handle(cost, now) {
 		this.advance(now);
+		if (now < this.outageUntil) {
+			return { status: 503, retryAfter: Math.max(1, Math.ceil(this.outageUntil - now)) };
+		}
 		const limit = this.limit(now);
 		if (this.used + cost <= limit) {
 			this.slots[this.second % 60] += cost;
@@ -490,11 +494,78 @@ export const DEFAULT_WORLD = Object.freeze({
 	latency: 0.2,
 	maxRetries: 3,
 	options: {},
+	story: null,
 });
+
+export const MAX_INSTANCES = 4;
+
+/**
+ * Scripted scenarios. Each event runs once, at the end of the step that reaches `at`.
+ * `factor` values are relative to the quota or the demand that the reader chose.
+ * `window` is the disturbance: the recovery column counts from its end.
+ */
+export const STORIES = Object.freeze({
+	free: {
+		label: 'Free run',
+		text: 'No events. Change the settings while it runs.',
+		duration: 900,
+		events: [],
+	},
+	neighbor: {
+		label: 'A noisy neighbor',
+		text: 'After 5 minutes, another client takes half of the quota for 60 seconds.',
+		duration: 900,
+		window: [300, 360],
+		events: [{ at: 300, type: 'drop', seconds: 60, share: 0.5 }],
+	},
+	cut: {
+		label: 'The server cuts the quota',
+		text: 'After 4 minutes, the server lowers the quota to 60% for 3 minutes. Then the full quota comes back.',
+		duration: 720,
+		window: [240, 420],
+		events: [
+			{ at: 240, type: 'quota', factor: 0.6 },
+			{ at: 420, type: 'quota', factor: 1 },
+		],
+	},
+	scale: {
+		label: 'Scale out',
+		text: 'One instance at the start. A second joins after 2 minutes, and two more after 4 minutes. Each limiter takes its share.',
+		duration: 600,
+		world: { instances: 1 },
+		events: [
+			{ at: 120, type: 'instances', count: 2 },
+			{ at: 240, type: 'instances', count: 4 },
+		],
+	},
+	burst: {
+		label: 'Top of the hour',
+		text: 'After 3 minutes, a scheduled job adds two times the demand for 90 seconds.',
+		duration: 600,
+		window: [180, 270],
+		events: [
+			{ at: 180, type: 'demand', factor: 3 },
+			{ at: 270, type: 'demand', factor: 1 },
+		],
+	},
+	outage: {
+		label: 'A long Retry-After',
+		text: 'After 3 minutes, the API is down for 90 seconds. It answers 503 with a Retry-After to the end of the outage. The limiter pauses for MaxPause at most, then tries again.',
+		duration: 600,
+		window: [180, 270],
+		events: [{ at: 180, type: 'outage', seconds: 90 }],
+	},
+});
+
+const MARK_LIMIT = 400;
 
 export class Simulation {
 	constructor(world = {}) {
-		this.world = { ...DEFAULT_WORLD, ...world };
+		const story = STORIES[world.story] ?? null;
+		this.world = { ...DEFAULT_WORLD, ...world, ...(story?.world ?? {}) };
+		this.story = story;
+		this.script = story ? story.events.slice().sort((a, b) => a.at - b.at) : [];
+		this.factors = { quota: 1, demand: 1 };
 		this.options = withDefaults(this.world.options);
 		this.t = 0;
 		this.server = new QuotaServer(this.world.quota);
@@ -503,6 +574,7 @@ export class Simulation {
 		this.inflight = [];
 		this.history = [];
 		this.events = [];
+		this.marks = [];
 		this.totals = { accepted: 0, n429: 0, rejected: 0, queueFull: 0, timeout: 0, gaveUp: 0, sent: 0 };
 		this.waits = [];
 		this.recentWaits = [];
@@ -517,6 +589,101 @@ export class Simulation {
 	log(text) {
 		this.events.push({ t: this.t, text });
 		if (this.events.length > 4) this.events.shift();
+	}
+
+	/** Records an event for the chart. `detail` says which rule fired. */
+	mark(kind, text, detail = '', instance = null, extra = {}) {
+		const mark = { t: this.t, kind, text, detail, instance, ...extra };
+		this.marks.push(mark);
+		if (this.marks.length > MARK_LIMIT) this.marks.shift();
+		return mark;
+	}
+
+	applyEvent(e) {
+		if (e.type === 'drop') {
+			this.quotaDrop(e.seconds, e.share);
+		} else if (e.type === 'quota') {
+			this.factors.quota = e.factor;
+			this.server.quota = this.world.quota * e.factor;
+			const text = e.factor === 1 ? 'the server gives back the full quota' : `the server cuts the quota to ${Math.round(e.factor * 100)}%`;
+			this.log(text);
+			this.mark('story', text, `The hidden quota is now ${Math.round(this.server.quota).toLocaleString('en-US')} units per minute. The limiters do not see it: they learn it from 429s.`);
+		} else if (e.type === 'demand') {
+			this.factors.demand = e.factor;
+			const text = e.factor === 1 ? 'the burst ends' : `a burst: demand x${e.factor}`;
+			this.log(text);
+			this.mark('story', text, e.factor === 1 ? 'The demand goes back to the normal value.' : `Each instance now wants ${e.factor} times its normal demand. Requests wait in the queue, and the queue limit and MaxWait start to matter.`);
+		} else if (e.type === 'instances') {
+			const before = this.clients.length;
+			this.setInstances(e.count);
+			const text = `scale out: ${before} -> ${e.count} instances`;
+			this.log(text);
+			this.mark('story', text, `SetInstanceCount(${e.count}): each limiter scales its rate, its minimum and its maximum to 1/${e.count} of the budget. New instances start at InitialUnitsPerMinute / ${e.count}.`);
+		} else if (e.type === 'outage') {
+			this.server.outageUntil = this.t + e.seconds;
+			const text = `the API is down for ${e.seconds} s`;
+			this.log(text);
+			this.mark('story', text, `Each request gets 503 with a Retry-After to the end of the outage. A 503 with Retry-After is a throttle: the limiter cuts and pauses, but for MaxPause (${this.options.maxPause} s) at most.`);
+		}
+	}
+
+	runScript() {
+		while (this.script.length && this.script[0].at <= this.t + 1e-9) this.applyEvent(this.script.shift());
+	}
+
+	/** Reads the limiter after a response and marks the rule that fired. Read-only. */
+	explain(flight, before, now) {
+		const { client } = flight;
+		const l = client.limiter;
+		const o = l.options;
+		const i = client.index;
+		const fmtRate = (v) => Math.round(v).toLocaleString('en-US');
+		if (isThrottled(flight.status, flight.retryAfter)) {
+			const what = flight.status === 429 ? '429' : '503 with Retry-After';
+			if (l.decreased && l.lastDecrease === now && (!before.decreased || before.cut !== now)) {
+				const rule =
+					l.controller.name === 'cubic'
+						? `CUBIC: W = ${fmtRate(l.rateBeforeLastDecrease)}, the lower of the rate and the measured send rate. New rate = W x Beta (${o.cubic.beta}).`
+						: `AIMD: new rate = rate x DecreaseFactor (${o.aimd.decreaseFactor}).`;
+				const floor = l.rate <= l.minRate + 1e-9 ? ` The rate stops at the MinUnitsPerMinute share (${fmtRate(l.minRate)}).` : '';
+				client.cutMark = this.mark(
+					'cut',
+					`instance ${i + 1}: ${what}, rate ${fmtRate(before.rate)} -> ${fmtRate(l.rate)}`,
+					`${rule}${floor} For the next DecreaseCooldown (${o.decreaseCooldown} s), more throttles do not cut again.`,
+					i,
+					{ ignored: { cooldown: 0, stale: 0 }, rate: l.rate },
+				);
+			} else if (client.cutMark) {
+				const reason = now - before.cut < o.decreaseCooldown ? 'cooldown' : 'stale';
+				client.cutMark.ignored[reason]++;
+			}
+			if (l.bucket.pausedUntil > before.paused + 1e-9) {
+				const ra = flight.retryAfter;
+				const until = l.bucket.pausedUntil;
+				const open = client.pauseMark && client.pauseMark.until >= now - 1e-9;
+				if (open) {
+					client.pauseMark.until = until;
+					client.pauseMark.count++;
+				} else {
+					const capped = ra > o.maxPause;
+					client.pauseMark = this.mark(
+						'pause',
+						`instance ${i + 1}: pause ${Math.round(Math.min(ra, o.maxPause))} s`,
+						`Retry-After ${ra} s. The bucket gives no units until the pause ends${capped ? `, capped by MaxPause (${o.maxPause} s)` : ''}. The increase clock starts again after the pause.`,
+						i,
+						{ until, count: 1, rate: l.rate },
+					);
+				}
+			}
+		} else if (before.rate < l.maxRate - 1e-9 && l.rate >= l.maxRate - 1e-9) {
+			this.mark(
+				'max',
+				`instance ${i + 1}: rate at the maximum`,
+				`The rate reached the MaxUnitsPerMinute share (${fmtRate(l.maxRate)}). It cannot go higher. If the API allows more, raise MaxUnitsPerMinute.`,
+				i,
+				{ rate: l.rate },
+			);
+		}
 	}
 
 	newClient(index, count) {
@@ -547,13 +714,13 @@ export class Simulation {
 	}
 
 	interArrival(client) {
-		const perSecond = this.world.demand / 60 / MEAN_COST;
+		const perSecond = (this.world.demand * this.factors.demand) / 60 / MEAN_COST;
 		if (perSecond <= 0) return Infinity;
 		return -Math.log(1 - client.rng()) / perSecond;
 	}
 
 	setInstances(count) {
-		const n = Math.max(1, Math.min(3, count | 0));
+		const n = Math.max(1, Math.min(MAX_INSTANCES, count | 0));
 		this.world.instances = n;
 		for (const c of this.clients) {
 			if (c.limiter) c.limiter.setInstanceCount(n, this.t);
@@ -566,7 +733,7 @@ export class Simulation {
 
 	setQuota(quota) {
 		this.world.quota = quota;
-		this.server.quota = quota;
+		this.server.quota = quota * this.factors.quota;
 	}
 
 	setDemand(demand) {
@@ -576,7 +743,9 @@ export class Simulation {
 	quotaDrop(seconds = 60, share = 0.5) {
 		this.server.dropUntil = this.t + seconds;
 		this.server.dropShare = share;
-		this.log(`noisy neighbor takes ${Math.round(share * 100)}% of the quota for ${seconds} s`);
+		const text = `noisy neighbor takes ${Math.round(share * 100)}% of the quota for ${seconds} s`;
+		this.log(text);
+		this.mark('story', text, 'Another client uses the same quota. The API now allows less, but it does not say so: the limiters learn it from 429s.');
 	}
 
 	rateOf(client) {
@@ -638,7 +807,7 @@ export class Simulation {
 		if (client.limiter) {
 			client.limiter.onResponse(now, flight.status, flight.retryAfter, flight.sentAt, request.cost);
 		}
-		if (flight.status !== 429) return;
+		if (!isThrottled(flight.status, flight.retryAfter)) return;
 		this.totals.n429++;
 		this.second.n429++;
 		client.flashUntil = now + 1;
@@ -666,12 +835,14 @@ export class Simulation {
 		if (due.length) {
 			this.inflight = this.inflight.filter((f) => f.at > now);
 			for (const flight of due) {
-				const before = flight.client.limiter?.rate;
+				const l = flight.client.limiter;
+				const before = l && { rate: l.rate, cut: l.lastDecrease, decreased: l.decreased, paused: l.bucket.pausedUntil };
 				this.respond(flight, now);
-				const after = flight.client.limiter?.rate;
-				if (before != null && after < before) {
-					this.log(`instance ${flight.client.index + 1}: 429, rate ${Math.round(before)} -> ${Math.round(after)}`);
+				if (!l) continue;
+				if (l.rate < before.rate) {
+					this.log(`instance ${flight.client.index + 1}: ${flight.status}, rate ${Math.round(before.rate)} -> ${Math.round(l.rate)}`);
 				}
+				this.explain(flight, before, now);
 			}
 		}
 
@@ -698,6 +869,7 @@ export class Simulation {
 		}
 
 		if (Math.abs(now - Math.round(now)) < 1e-6) this.record(Math.round(now));
+		if (this.script.length) this.runScript();
 	}
 
 	record(second) {
@@ -709,6 +881,7 @@ export class Simulation {
 			n429: this.second.n429,
 			accepted: this.second.accepted,
 			queue: this.clients.reduce((a, c) => a + this.queueOf(c).length, 0),
+			total: { accepted: this.totals.accepted, n429: this.totals.n429, lost: this.totals.rejected + this.totals.gaveUp },
 		});
 		this.second = { n429: 0, accepted: 0 };
 		if (this.world.historyMax && this.history.length > this.world.historyMax) this.history.shift();
@@ -787,4 +960,25 @@ export function summarize(sim, plan = COMPARISON) {
 
 export function compare(world, modes = Object.keys(MODES), plan = COMPARISON) {
 	return modes.map((mode) => runScenario({ ...world, mode }, plan));
+}
+
+export function storyPlan(key, seed = COMPARISON.seed) {
+	const story = STORIES[key] ?? STORIES.free;
+	const [from, to] = story.window ?? [story.duration, story.duration];
+	return { duration: story.duration, dropAt: from, dropFor: to - from, seed, story: key, hasWindow: Boolean(story.window) };
+}
+
+/** Runs one mode through a story. With the 'neighbor' story and seed 42 it gives the numbers of runScenario. */
+export function runStory(world, key, seed = COMPARISON.seed) {
+	const plan = storyPlan(key, seed);
+	const sim = new Simulation({ ...world, seed: plan.seed, story: STORIES[key] ? key : 'free' });
+	sim.runUntil(plan.duration);
+	const result = summarize(sim, plan);
+	if (!plan.hasWindow) result.recovery = null;
+	result.marks = sim.marks.filter((m) => m.kind === 'story');
+	return result;
+}
+
+export function race(world, key, seed, modes = Object.keys(MODES)) {
+	return modes.map((mode) => runStory({ ...world, mode }, key, seed));
 }
