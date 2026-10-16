@@ -1,0 +1,177 @@
+---
+title: Configuration
+description: Every option, its default and how to tune it.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Ways to configure a limiter
+
+<Tabs>
+<TabItem label="Configuration section">
+
+`AddAdaptiveRateLimiter(name)` binds the section `AdaptiveRateLimiting:Limiters:<name>` of the `IConfiguration` in the container, and reloads on change.
+
+```csharp
+builder.Services.AddAdaptiveRateLimiter("orders-api");
+```
+
+```json title="appsettings.json"
+{
+  "AdaptiveRateLimiting": {
+    "Limiters": {
+      "orders-api": {
+        "InitialUnitsPerMinute": 600,
+        "MinUnitsPerMinute": 60,
+        "MaxUnitsPerMinute": 1200,
+        "DecreaseCooldown": "00:00:05",
+        "Controller": "Aimd",
+        "Aimd": {
+          "IncreaseStep": 60,
+          "IncreaseInterval": "00:00:10"
+        }
+      }
+    }
+  }
+}
+```
+
+The section path is also the constant `AdaptiveRateLimiterServiceCollectionExtensions.LimitersSection`.
+
+</TabItem>
+<TabItem label="Other section">
+
+Pass a section of your own. It also reloads on change.
+
+```csharp
+builder.Services.AddAdaptiveRateLimiter(
+    "search-api",
+    builder.Configuration.GetSection("SearchApi:RateLimit")
+);
+```
+
+</TabItem>
+<TabItem label="Delegate">
+
+Pass a delegate. The delegate runs after the binding of `AdaptiveRateLimiting:Limiters:<name>`, so it wins over the configuration.
+
+```csharp
+builder.Services.AddAdaptiveRateLimiter("billing-api", o => o.QueueLimit = 50);
+```
+
+</TabItem>
+<TabItem label="No DI">
+
+Pass an `AdaptiveRateLimiterOptions` to the constructor. The limiter keeps a copy. To change it later, call `UpdateOptions`.
+
+```csharp
+limiter.UpdateOptions(
+    new AdaptiveRateLimiterOptions
+    {
+        InitialUnitsPerMinute = 600,
+        MinUnitsPerMinute = 60,
+        MaxUnitsPerMinute = 2400,
+    }
+);
+```
+
+</TabItem>
+</Tabs>
+
+## Value formats
+
+The binding reads each key that is set, and keeps the current value of each key that is not set. It does not use reflection, so it is safe for trimming and native AOT.
+
+| Type | Format | Example |
+| --- | --- | --- |
+| `double`, `int` | Invariant culture | `1200`, `0.7` |
+| `bool` | `true` or `false` | `false` |
+| `TimeSpan` | `TimeSpan.Parse`, invariant culture | `00:00:05` for 5 seconds |
+| `RateControllerType` | Name, case does not matter | `Aimd`, `cubic` |
+
+A value that does not parse throws `InvalidOperationException` with the path of the key.
+
+## AdaptiveRateLimiterOptions
+
+All rates are in units per minute, for the whole budget. Each of the `InstanceCount` processes takes an equal share.
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `Enabled` | `bool` | `true` | When `false`, requests are not limited, but units and throttled responses are still recorded. |
+| `InstanceCount` | `int` | `1` | The number of processes that share the budget, until `SetInstanceCount` or an `IInstanceCountSource` sets the live count. |
+| `InitialUnitsPerMinute` | `double` | `1500` | The rate at the start. |
+| `MinUnitsPerMinute` | `double` | `200` | The lowest rate. |
+| `MaxUnitsPerMinute` | `double` | `5625` | The highest rate. Set it below the published limit of the API. |
+| `DecreaseCooldown` | `TimeSpan` | 5 seconds | A burst of throttled responses cuts the rate once in this period, not once for each response. |
+| `Burst` | `TimeSpan` | 10 seconds | The bucket holds the units of this period at the current rate. |
+| `QueueLimit` | `int` | `500` | The most requests that can wait for units. `0` means that no request can wait. |
+| `MaxWait` | `TimeSpan` | 100 seconds | The longest time that a request waits for its units before `RateLimitRejectedException`. |
+| `MaxPause` | `TimeSpan` | 30 seconds | A throttled response holds back all requests for its `Retry-After`, up to this limit. `0` turns the pause off. |
+| `MaxRequestUnits` | `int` | `100` | The units of the largest request. Used only to check that `MaxWait` is long enough at `MinUnitsPerMinute`. |
+| `Controller` | `RateControllerType` | `Aimd` | The built-in controller, `Aimd` or `Cubic`. A custom `IRateController` replaces it. |
+| `Aimd` | `AimdOptions` | see below | The settings of the AIMD controller. |
+| `Cubic` | `CubicOptions` | see below | The settings of the CUBIC controller. |
+
+<Aside type="caution" title="The defaults fit SharePoint">
+The default rates fit the SharePoint resource-unit budget of a large tenant, through Microsoft Graph. They can change in a later version. For any other API, set `InitialUnitsPerMinute`, `MinUnitsPerMinute` and `MaxUnitsPerMinute`.
+</Aside>
+
+## AimdOptions
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `DecreaseFactor` | `double` | `0.7` | The rate is multiplied by this factor on a throttle. More than 0 and less than 1. |
+| `IncreaseStep` | `double` | `120` | The units per minute added, for the whole budget, after a quiet `IncreaseInterval`. Each process adds its share. `0` or more. |
+| `IncreaseInterval` | `TimeSpan` | 10 seconds | The rate goes up by `IncreaseStep` after this period with no throttle, and only if requests had to wait in it. `0` or more. |
+
+## CubicOptions
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `Beta` | `double` | `0.7` | The rate is multiplied by this factor on a throttle. More than 0 and less than 1. |
+| `ScaleConstant` | `double` | `0.4` | How fast the rate grows back, in units per second per second cubed, for the whole budget. More than 0. |
+
+The defaults of `CubicOptions` are the constants of the AWS SDK adaptive retry mode. See [Rate controllers](/adaptive-rate-limiting-dotnet/guide/controllers/#how-cubic-behaves-with-the-defaults) for how they behave.
+
+## Validation
+
+The limiter checks the options when you create it, when you call `UpdateOptions`, and when the instance count changes. The rate checks use the share of one process.
+
+- `InstanceCount` is 1 or more.
+- `MinUnitsPerMinute` is more than 0.
+- `MaxUnitsPerMinute` is `MinUnitsPerMinute` or more.
+- `InitialUnitsPerMinute` is between `MinUnitsPerMinute` and `MaxUnitsPerMinute`.
+- `DecreaseCooldown` and `MaxPause` are 0 or more. `Burst` and `MaxWait` are more than 0.
+- `QueueLimit` is 0 or more. `MaxRequestUnits` is more than 0.
+- `Controller` is `Aimd` or `Cubic`.
+- The `Aimd` and `Cubic` options are in their ranges. Both are checked, whichever controller you use.
+- `MaxWait` is longer than the time to collect the units of the largest request at the minimum share. The largest request is `MaxRequestUnits` units, but not more than the bucket holds at the minimum rate.
+
+A failed check throws `ArgumentOutOfRangeException`, and the limiter keeps its old options. With `Enabled` set to `false`, the rates and the times are not checked.
+
+<Aside type="caution" title="InitialUnitsPerMinute is checked on each change">
+The initial rate is checked on each update too, even though the limiter uses it only at the start. To lower `MaxUnitsPerMinute` below the initial rate, lower `InitialUnitsPerMinute` in the same change.
+</Aside>
+
+## Live reload
+
+When the configuration changes, the limiter applies the new options:
+
+- It keeps its current rate, clamped to the new minimum and maximum.
+- It keeps its queued requests.
+- It changes the size of the bucket for the new `Burst`, and the queue for the new `QueueLimit`.
+- It creates a new built-in controller from the new `Controller`, `Aimd` and `Cubic` options. A custom controller stays.
+
+If the new options are not valid, the limiter keeps the old ones and logs a warning with event ID 1: `The new settings of rate limiter '<name>' are not valid; it keeps the old ones.`
+
+<Aside type="danger" title="A value that does not parse">
+The warning covers values that parse but are out of range. A value that does not parse, such as `"MaxUnitsPerMinute": "abc"`, throws `InvalidOperationException` from the reload of the configuration. The limiter keeps its old options, but no warning is logged. With `IConfigurationRoot.Reload()`, the caller gets an `AggregateException`.
+</Aside>
+
+## Change the options in code
+
+| Method | Effect |
+| --- | --- |
+| `UpdateOptions(options)` | Applies new options, with the rules of live reload. Throws `ArgumentOutOfRangeException` if they are not valid. |
+| `SetInstanceCount(count)` | Changes the number of processes and scales the rate to the new share. |
+| `UseInstanceCount(source)` | Takes the instance count from a live source. `InstanceCount` in the options then no longer applies. |

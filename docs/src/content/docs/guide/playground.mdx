@@ -1,0 +1,56 @@
+---
+title: Simulator
+description: Run the adaptive limiter against a model API with a hidden quota, and compare the modes.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import RateLimitSimulator from '../../../components/RateLimitSimulator.astro';
+
+The simulator runs a model of the limiter in your browser. Choose a mode, the number of instances, the hidden quota and the demand. Then watch the queues, the buckets and the quota.
+
+<RateLimitSimulator
+	view="both"
+	mode="aimd"
+	instances={2}
+	quota={3000}
+	demand={2000}
+	presets={[
+		{ label: 'Find the limit', text: 'AIMD climbs in steps until the first 429, then cuts by 30%.', button: 'AIMD', set: { mode: 'aimd', instances: 2, quota: 3000, demand: 2000 } },
+		{ label: 'Fast climb', text: 'CUBIC gets to the maximum in seconds, and gets more 429s.', button: 'CUBIC', set: { mode: 'cubic', instances: 2, quota: 3000, demand: 2000 } },
+		{ label: 'A noisy neighbor', text: 'Another client takes half of the quota for 60 seconds.', button: 'Drop the quota', set: { drop: true } },
+		{ label: 'Retry only', text: 'No limiter. Each instance sends at once and retries after Retry-After.', button: 'No limiter', set: { mode: 'none' } },
+		{ label: 'Light load', text: 'The demand is below the quota. The rate does not climb, because no request waits.', button: 'Light load', set: { mode: 'aimd', demand: 600 } },
+	]}
+/>
+
+## Controls
+
+| Control | Effect |
+| --- | --- |
+| Pause, Play | Stops and starts the run. With reduced motion turned on in your system, the run starts paused. |
+| Reset | Starts a new run with the current settings. |
+| Quota drop | Another client takes half of the quota for 60 seconds. |
+| Mode | No limiter, a fixed rate of 1,500 units per minute, AIMD or CUBIC. A change starts a new run. |
+| Instances | 1 to 3 processes that share the quota. |
+| Speed | Simulated seconds per real second. |
+| Hidden quota | The units per minute that the model API allows. The limiters cannot see it. |
+| Demand per instance | The units per minute that each instance wants to send. |
+
+The comparison below the live view runs all modes for 15 simulated minutes on one seed, with a quota drop after 5 minutes.
+
+## The model
+
+| Part | Model |
+| --- | --- |
+| API | A sliding window of 60 seconds. A request that would go over the quota gets 429 with a `Retry-After` of the seconds until there is room. A throttled request uses no quota. |
+| Requests | Each instance makes requests at random times, at the demand rate. A request costs 1, 2 or 5 units (6 of 10 cost 1, 3 cost 2, 1 costs 5). |
+| Network | A fixed time of 0.2 seconds from send to response. |
+| Retry | A retry handler outside the limiter sends a throttled request again after its `Retry-After`, up to 3 times. |
+| Limiter | The rules of `AdaptiveRateLimiter`, `AdaptiveTokenBucket`, `AimdController` and `CubicController`, with the default options. |
+| Fixed rate | A token bucket at the initial rate share, without cuts and without the pause. |
+
+<Aside>
+A trace test feeds the same events to the C# limiter (with a fake clock) and to the model, and checks that the rates are the same. The API, the load and the network are models, so use the numbers to compare modes, not to predict a real API. Real APIs differ: for example, some count throttled requests toward the quota.
+</Aside>
+
+To print the comparison for several scenarios without a browser, run `npm run simulate` in the `docs` folder.

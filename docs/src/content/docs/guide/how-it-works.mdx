@@ -1,0 +1,92 @@
+---
+title: How it works
+description: Token bucket, the controller loop, the Retry-After pause and the instance share.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import RequestFlow from '../../../components/diagrams/RequestFlow.astro';
+import RateLimitSimulator from '../../../components/RateLimitSimulator.astro';
+
+An `AdaptiveRateLimiter` has three parts: a token bucket that holds requests back, a classifier that reads each response, and a rate controller that sets the next rate. The limit handler connects them to an `HttpClient`.
+
+<RequestFlow />
+
+## The path of a request
+
+1. **Estimate the cost.** The `IRequestCostEstimator` gives the units of the request. The default gives 1 unit to each request. A request of 0 units does not wait and does not change the rate.
+2. **Wait for units.** The request waits in the token bucket until the bucket holds its units. Waiting requests leave the queue in FIFO order.
+3. **Send.** The handler sends the request to the next handler.
+4. **Classify the response.** The `IThrottleClassifier` tells if the response is a throttle, and reads its `Retry-After`. The default is a throttle on 429, and on 503 with `Retry-After`.
+5. **Change the rate.** On a throttle, the limiter cuts the rate and can pause. On a success, the controller can raise the rate.
+
+A network error does not reach the limiter, and does not change the rate. A server error that is not a throttle (for example, 500) also does not change the rate: it does not show that a higher rate is safe.
+
+## The token bucket
+
+The bucket fills at the current rate. It holds the units of `Burst` at that rate (10 seconds by default), and at least 1 unit. A full bucket lets a short burst through at once. After the burst, requests go at the rate.
+
+- A request that costs more than the bucket holds is sent when the bucket is full. The bucket then goes below zero, so the request still pays its full cost.
+- When the rate changes, the bucket keeps its tokens, up to the new size. Queued requests stay in the queue.
+- At most `QueueLimit` requests can wait (500 by default). The next request gets `RateLimitRejectedException` at once.
+- A request that waits longer than `MaxWait` (100 seconds by default) gets `RateLimitRejectedException`.
+
+## What a throttle does
+
+When the classifier finds a throttle, the limiter does these steps in this order:
+
+1. It restarts the increase clock (`SinceLastIncrease`), and it forgets that requests waited. So no increase can happen until a request waits again.
+2. It cuts the rate if this is the first throttle, or if both of these are true:
+   - `DecreaseCooldown` (5 seconds by default) has passed since the last cut.
+   - The throttled request was sent after the last cut.
+
+   The controller gives the new rate. The limiter never makes the rate higher on a throttle, and keeps it at `MinUnitsPerMinute` or above.
+3. If the response has a `Retry-After` and `MaxPause` is more than zero, the bucket pauses for the `Retry-After`, up to `MaxPause` (30 seconds by default). The bucket sends nothing in the pause, and it starts empty after the pause. No increase can happen before the pause ends.
+
+The second rule matters. When the server throttles, many requests can already be on the way. Their 429s arrive after the first one. Without the rule, each of them cuts the rate again, and one burst of 429s drops the rate to the minimum. With the rule, one burst gives one cut.
+
+## What a success does
+
+A response that is not a throttle and has a status below 500 is a success. On a success, the limiter asks the controller for a new rate, but not during a pause. The controller can return a new rate, or "no change".
+
+Both built-in controllers raise the rate only if requests had to wait for units since the last change. A client that sends less than its rate does not raise its rate. Without that rule, a quiet client climbs to `MaxUnitsPerMinute`, and then floods the API when the work comes back.
+
+The rate always stays between the minimum and the maximum. [Rate controllers](/adaptive-rate-limiting-dotnet/guide/controllers/) explains the AIMD and CUBIC rules.
+
+## The instance share
+
+The rates in the options are for the whole budget. When several processes use one budget, each process has its own limiter and takes an equal share:
+
+| Value | Per process |
+| --- | --- |
+| Current rate | rate / instance count |
+| `MinUnitsPerMinute`, `MaxUnitsPerMinute`, `InitialUnitsPerMinute` | value / instance count |
+| `Aimd.IncreaseStep`, `Cubic.ScaleConstant` | value / instance count |
+
+When the count changes, the limiter scales its current rate to the new share. It keeps the rate that it found for the whole budget. See [Instance count](/adaptive-rate-limiting-dotnet/guide/instance-count/).
+
+## Disabled limiters
+
+With `Enabled` set to `false`, the limiter does not hold back requests and does not change its rate. It still records the units and the throttled responses in the [metrics](/adaptive-rate-limiting-dotnet/guide/metrics/), so you can measure the traffic before you turn the limiter on.
+
+## See it run
+
+The simulator below runs a model of the limiter against a model API. The API has a quota of units in a sliding window of 60 seconds, which the clients cannot see. When a request would go over the quota, the API answers 429 with a `Retry-After` of the seconds until there is room. Requests cost 1, 2 or 5 units. Each instance runs a retry handler outside its limiter, with up to 3 retries.
+
+<RateLimitSimulator
+	view="live"
+	mode="aimd"
+	instances={2}
+	quota={3000}
+	demand={2000}
+	caption="Two instances share a hidden quota of 3,000 units per minute."
+	presets={[
+		{ label: 'The first throttle', text: 'Reset and watch the rate climb until the first 429. The rate drops by 30%, and the bucket pauses for the Retry-After.', button: 'Reset', set: { reset: true } },
+		{ label: 'A noisy neighbor', text: 'Another client takes half of the quota for 60 seconds. Watch the cut, and the climb after the quota comes back.', button: 'Drop the quota', set: { drop: true } },
+		{ label: 'One more instance', text: 'A third instance joins. Each limiter scales its rate to the new share.', button: 'Three instances', set: { instances: 3 } },
+		{ label: 'No limiter', text: 'The same load with retry only. Compare the 429s.', button: 'Remove the limiter', set: { mode: 'none' } },
+	]}
+/>
+
+<Aside>
+The simulator uses the same rules as the library, and the default options. A trace test checks that the model gives the same rates as the C# code for the same events. The API, the load and the network are models. Use the numbers to compare modes, not to predict a real API.
+</Aside>

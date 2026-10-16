@@ -1,0 +1,132 @@
+---
+const W = 600;
+const H = 220;
+const pad = { l: 36, r: 12, t: 16, b: 30 };
+const T = 120;
+const limit = 104;
+const x = (t: number) => pad.l + (t / T) * (W - pad.l - pad.r);
+const y = (v: number) => pad.t + (H - pad.t - pad.b) * (1 - v / 130);
+
+function aimd() {
+	const pts: [number, number][] = [];
+	let rate = 70;
+	let last = 0;
+	for (let t = 0; t <= T; t += 0.5) {
+		if (t - last >= 10) {
+			rate += 6;
+			last = t;
+		}
+		if (rate > limit) {
+			pts.push([t, rate]);
+			rate *= 0.7;
+			last = t;
+		}
+		pts.push([t, rate]);
+	}
+	return pts;
+}
+
+function cubic() {
+	const pts: [number, number][] = [];
+	const beta = 0.7;
+	const c = 0.00375;
+	let w = 100;
+	let cut = 0;
+	for (let t = 0; t <= T; t += 0.5) {
+		const k = Math.cbrt((w * (1 - beta)) / c);
+		const rate = c * Math.pow(t - cut - k, 3) + w;
+		if (rate > limit) {
+			pts.push([t, rate]);
+			w = rate;
+			cut = t;
+			pts.push([t, rate * beta]);
+			continue;
+		}
+		pts.push([t, rate]);
+	}
+	return pts;
+}
+
+const d = (pts: [number, number][]) => pts.map(([t, v], i) => `${i ? 'L' : 'M'}${x(t).toFixed(1)} ${y(v).toFixed(1)}`).join('');
+const aimdPath = d(aimd());
+const cubicPath = d(cubic());
+---
+
+<figure class="diagram not-content">
+	<svg viewBox={`0 0 ${W} ${H}`} role="img" aria-labelledby="shapes-title shapes-desc">
+		<title id="shapes-title">The shape of the rate under AIMD and CUBIC</title>
+		<desc id="shapes-desc">
+			A sketch. AIMD climbs in equal steps and drops by 30% when it reaches the limit, which gives a saw tooth. CUBIC climbs fast, slows down near the rate of the last cut, then climbs fast again.
+		</desc>
+		<line x1={pad.l} x2={W - pad.r} y1={y(limit)} y2={y(limit)} class="limit" />
+		<text x={W - pad.r} y={y(limit) - 6} class="tiny" text-anchor="end">hidden limit</text>
+		<line x1={pad.l} x2={pad.l} y1={pad.t} y2={H - pad.b} class="axis" />
+		<line x1={pad.l} x2={W - pad.r} y1={H - pad.b} y2={H - pad.b} class="axis" />
+		<text x={pad.l - 6} y={pad.t + 8} class="tiny" text-anchor="end">rate</text>
+		<text x={W - pad.r} y={H - 8} class="tiny" text-anchor="end">time</text>
+		<path d={aimdPath} class="aimd" />
+		<path d={cubicPath} class="cubic" />
+	</svg>
+	<figcaption>
+		<span><i class="key aimd-key"></i>AIMD</span>
+		<span><i class="key cubic-key"></i>CUBIC</span>
+		<span>A sketch of the shape only. The steps and the speed depend on the options.</span>
+	</figcaption>
+</figure>
+
+<style>
+	.diagram {
+		margin: 1.5rem 0;
+	}
+	svg {
+		width: 100%;
+		height: auto;
+		display: block;
+	}
+	.axis {
+		stroke: var(--sl-color-gray-4);
+	}
+	.limit {
+		stroke: var(--sl-color-red);
+		stroke-dasharray: 5 4;
+		stroke-width: 1.5;
+	}
+	.tiny {
+		font: 11px var(--sl-font);
+		fill: var(--sl-color-gray-3);
+	}
+	.aimd,
+	.cubic {
+		fill: none;
+		stroke-width: 2.5;
+		stroke-linejoin: round;
+	}
+	.aimd {
+		stroke: var(--sl-color-blue);
+	}
+	.cubic {
+		stroke: var(--sl-color-purple);
+		stroke-dasharray: 6 2;
+	}
+	figcaption {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem 1rem;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+		margin-top: 0.5rem;
+	}
+	.key {
+		display: inline-block;
+		width: 16px;
+		height: 3px;
+		vertical-align: middle;
+		margin-right: 0.35rem;
+	}
+	.aimd-key {
+		background: var(--sl-color-blue);
+	}
+	.cubic-key {
+		background: var(--sl-color-purple);
+	}
+</style>

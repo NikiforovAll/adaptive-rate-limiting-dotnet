@@ -1,0 +1,83 @@
+---
+title: Troubleshooting and FAQ
+description: Common problems with the adaptive limiter, their causes and their fixes.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## The limiter does not start
+
+**Symptom:** the first resolve of the limiter, or its constructor, throws `ArgumentOutOfRangeException`.
+
+**Cause:** the options are not valid at the share of one process. The most common case: you set `MaxUnitsPerMinute` below the default `InitialUnitsPerMinute` of 1,500.
+
+**Fix:** set `InitialUnitsPerMinute`, `MinUnitsPerMinute` and `MaxUnitsPerMinute` together. The message names the option that failed. See [Validation](/adaptive-rate-limiting-dotnet/guide/configuration/#validation).
+
+## A reload of the settings has no effect
+
+**Symptom:** you change `appsettings.json`, and the rate does not change.
+
+Check these causes:
+
+- The new options are not valid. The limiter logs a warning with event ID 1 and keeps the old options. A frequent case is a new `MaxUnitsPerMinute` below `InitialUnitsPerMinute`.
+- A value does not parse, for example `"abc"` for a number or `"5"` for a `TimeSpan`. The reload of the configuration throws `InvalidOperationException`, and no warning is logged. Use `00:00:05` for 5 seconds.
+- The limiter keeps its current rate on a reload. It moves the rate only if the rate is outside the new minimum and maximum. A new `InitialUnitsPerMinute` has no effect on a running limiter.
+- A live instance count source is attached. Then `InstanceCount` in the configuration no longer applies.
+
+## Many 429s
+
+- **The maximum is above the real limit.** The limiter finds the limit by throttles. With CUBIC, the rate goes back to `MaxUnitsPerMinute` within seconds after each cut. Set `MaxUnitsPerMinute` below the real limit, or use AIMD. See [Choosing a controller](/adaptive-rate-limiting-dotnet/guide/controllers/#choosing-a-controller).
+- **The instance count is too low.** If 4 processes use the budget but each thinks it is alone, together they can send 4 times the maximum. Check the `ratelimit.adaptive.instances` gauge on each process.
+- **Other clients use the same budget.** The limiter cannot see them. Lower the maximum, or count them in the instance count.
+- **The costs are too low.** If a request costs more of the budget than its estimate, the limiter sends too much. Check the cost estimator. For Graph `$batch`, use the SharePoint estimator, which counts each inner request.
+- **Requests bypass the limiter.** Each `HttpClient` that uses the budget must have the limit handler with the same limiter name.
+
+## Many rejected requests
+
+`RateLimitRejectedException` means that the request was not sent. The `ratelimit.adaptive.rejected` counter has the reason:
+
+- `queue_full`: more than `QueueLimit` requests wait. The client has more work than the budget allows. Lower the concurrency of the caller, or raise `QueueLimit`.
+- `timeout`: the request waited longer than `MaxWait`. Raise `MaxWait`, lower the concurrency, or raise the minimum rate if the API allows it.
+
+When the demand is above the budget for a long time, rejections are expected. They are cheaper than 429s: a rejected request costs no quota.
+
+## Requests fail with a timeout before MaxWait
+
+The wait for units runs inside the `HttpClient`. These timeouts include it:
+
+- `HttpClient.Timeout` (100 seconds by default).
+- The total and attempt timeouts of a resilience pipeline, for example `AddStandardResilienceHandler`.
+- The `CancellationToken` of the caller.
+
+Then the caller gets `TaskCanceledException` or `TimeoutRejectedException`, not `RateLimitRejectedException`. Make the timeouts longer than `MaxWait`, or make `MaxWait` shorter than the timeouts.
+
+## The rate does not go up
+
+- **No request waited.** The controllers raise the rate only if requests had to wait for units. If the client sends less than its rate, the rate stays. This is by design.
+- **The limiter is in a pause.** No increase happens before the `Retry-After` pause ends.
+- **AIMD is slow by design.** With the defaults, it adds 120 units per minute every 10 seconds, for the whole budget. Raise `Aimd.IncreaseStep` for a large budget.
+- **The rate is at the maximum.** Check `ratelimit.adaptive.rate` against `MaxUnitsPerMinute` divided by the instance count.
+
+## Each retry costs units
+
+Yes. The limit handler is inside the retry handler, so each attempt waits for its units and counts toward the budget. Some APIs, such as SharePoint Online, also count throttled requests toward the budget.
+
+## A 500 response does not change the rate
+
+A server error that is not a throttle does not show that the rate is too high, and does not show that a higher rate is safe. So the limiter ignores it. A network error does not reach the limiter.
+
+## Does the limiter read the RateLimit headers?
+
+No. It reads only the status code and `Retry-After`. Write an `IThrottleClassifier` to read other headers or the body.
+
+## Do processes talk to each other?
+
+No. Each process has its own limiter and takes its share of the budget. The instance count is the only shared value, and you give it. There is no shared state, so there is no extra network call per request.
+
+## How do I turn the limiter off?
+
+Set `Enabled` to `false`. Requests are not limited, and the metrics still count units and throttles. With live reload, you can turn it on again without a restart.
+
+<Aside type="tip">
+Use `Enabled: false` to measure the traffic and the throttles of an API before you choose the rates.
+</Aside>

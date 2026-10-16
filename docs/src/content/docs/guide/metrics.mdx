@@ -1,0 +1,89 @@
+---
+title: Metrics
+description: Instruments, OpenTelemetry setup, views and dashboards.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The limiter publishes metrics with `System.Diagnostics.Metrics`. The meter is `Nall.RateLimiting.Adaptive`, also in the constant `AdaptiveRateLimiterMetrics.MeterName`.
+
+If the container has an `IMeterFactory`, the DI registration uses it. The generic host and ASP.NET Core add one. Without DI, pass an `IMeterFactory` to the constructor, or the limiter uses one static meter.
+
+## Collect with OpenTelemetry
+
+```csharp title="Program.cs"
+builder
+    .Services.AddOpenTelemetry()
+    .WithMetrics(metrics =>
+        metrics
+            .AddMeter("Nall.RateLimiting.Adaptive")
+            .AddView(
+                "ratelimit.adaptive.wait",
+                new ExplicitBucketHistogramConfiguration
+                {
+                    Boundaries = [0, 0.1, 0.5, 1, 2, 5, 10, 30, 60, 100],
+                }
+            )
+            .AddConsoleExporter()
+    );
+```
+
+The view is optional. The default histogram boundaries of the OpenTelemetry SDK go from 0 to 10,000, which fits milliseconds. Waits are in seconds and can be up to `MaxWait`, so set boundaries in seconds. Replace the console exporter with the exporter of your backend.
+
+## Instruments
+
+Every measurement has the tag `ratelimit.limiter` with the name of the limiter.
+
+| Instrument | Type | Unit | Tags | Meaning |
+| --- | --- | --- | --- | --- |
+| `ratelimit.adaptive.units` | Counter `long` | `{unit}` | `ratelimit.category` | Units sent. Recorded when a request gets its units, also when the limiter is disabled. |
+| `ratelimit.adaptive.throttled` | Counter `long` | `{response}` | `http.response.status_code`, `ratelimit.retry_after`, `ratelimit.category` | Throttled responses. A `$batch` adds one for each throttled inner response. |
+| `ratelimit.adaptive.rejected` | Counter `long` | `{request}` | `ratelimit.reason` | Requests that the limiter did not send. |
+| `ratelimit.adaptive.wait` | Histogram `double` | `s` | none | The time that a request waited for its units. A request that did not wait records 0. |
+| `ratelimit.adaptive.rate` | Observable gauge `double` | `{unit}/min` | none | The current rate of this process. |
+| `ratelimit.adaptive.queue` | Observable gauge `int` | `{request}` | none | Requests that wait for units. |
+| `ratelimit.adaptive.instances` | Observable gauge `int` | `{process}` | none | The processes that share the budget. |
+
+The gauges report only limiters that are enabled. The wait histogram records only for enabled limiters too. A request of 0 units records nothing on `units` or `wait`.
+
+### Tag values
+
+| Tag | Values |
+| --- | --- |
+| `ratelimit.limiter` | The name of the limiter. |
+| `ratelimit.category` | `RequestCost.Category`, or `default` if it is null. |
+| `http.response.status_code` | The status code of the throttled response, for example `429` or `503`. |
+| `ratelimit.retry_after` | `none`, `le_5s` (5 seconds or less), `le_30s` (30 seconds or less) or `gt_30s`. |
+| `ratelimit.reason` | `queue_full` or `timeout`. |
+
+The constants of the instrument and tag names are on `AdaptiveRateLimiterMetrics`.
+
+<Aside>
+A disabled limiter and a request of 0 units classify a response from its status and headers only. A custom classifier, such as the `$batch` classifier, runs only for limited requests.
+</Aside>
+
+## What to watch
+
+| Question | Query |
+| --- | --- |
+| How much of the budget do we use? | Rate of `ratelimit.adaptive.units`, in units per minute, summed over all processes. Compare it with the limit of the API. |
+| Does the limiter find the limit? | `ratelimit.adaptive.rate` summed over all processes, next to the rate of `units`. |
+| Do we get throttled? | Rate of `ratelimit.adaptive.throttled` by `http.response.status_code` and `ratelimit.retry_after`. A few throttles are normal: the limiter finds the limit by them. |
+| Is the client too slow for its work? | p95 of `ratelimit.adaptive.wait`, `ratelimit.adaptive.queue`, and the rate of `ratelimit.adaptive.rejected` by `ratelimit.reason`. |
+| Is the share right? | `ratelimit.adaptive.instances` on each process. All processes of one budget must show the same number. |
+
+<Aside type="tip">
+`rate` is the rate of one process. The sum over the processes of one budget is the rate for the whole budget. `units` per minute can be lower than `rate` when the client has less work than its rate.
+</Aside>
+
+## Dashboard panels
+
+A useful dashboard has one row per limiter:
+
+1. **Units per minute** (rate of `units`, stacked by `ratelimit.category`), with a line for the sum of `rate`.
+2. **Throttles per minute** (rate of `throttled`, by `ratelimit.retry_after`).
+3. **Wait** (p50 and p95 of `wait`) and **queue** (max of `queue`).
+4. **Rejections per minute** (rate of `rejected`, by `ratelimit.reason`).
+5. **Instances** (last value of `instances`).
+
+The [simulator](/adaptive-rate-limiting-dotnet/guide/playground/) shows the same values: units used, sum of rates, 429s, queue, p95 wait and rejections.

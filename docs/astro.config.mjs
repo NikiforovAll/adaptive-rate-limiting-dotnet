@@ -21,16 +21,26 @@ export default defineConfig({
 			},
 			sidebar: [
 				{
-					label: 'Guide',
+					label: 'Start here',
+					items: [{ slug: 'guide/why' }, { slug: 'guide/getting-started' }],
+				},
+				{
+					label: 'Concepts',
 					items: [
-						{ slug: 'guide/why' },
-						{ slug: 'guide/getting-started' },
 						{ slug: 'guide/how-it-works' },
 						{ slug: 'guide/controllers' },
+						{ slug: 'guide/playground', badge: { text: 'Live', variant: 'tip' } },
+					],
+				},
+				{
+					label: 'Guides',
+					items: [
 						{ slug: 'guide/configuration' },
-						{ slug: 'guide/metrics' },
 						{ slug: 'guide/instance-count' },
+						{ slug: 'guide/metrics' },
 						{ slug: 'guide/microsoft-graph' },
+						{ slug: 'guide/recipes' },
+						{ slug: 'guide/troubleshooting' },
 					],
 				},
 				{

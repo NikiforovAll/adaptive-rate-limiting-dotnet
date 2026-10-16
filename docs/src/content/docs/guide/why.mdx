@@ -1,0 +1,56 @@
+---
+title: Why adaptive rate limiting
+description: Why retry alone does not keep a client under a throttling budget.
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+## The problem
+
+An API gives each client a budget: a number of requests, or of cost units, in a time window. The server often does not publish the exact number. The number can also change: other clients can use the same budget, and the server can lower it under load. When a client goes over the budget, the server answers `429 Too Many Requests`, often with a `Retry-After` header.
+
+## Why retry is not enough
+
+A retry policy waits and sends the request again. That handles one throttled request. It does not change how fast the client sends the next requests. Each worker keeps its speed, so the client keeps hitting the limit:
+
+- Many requests fail and are sent again, so the client does more work for the same result.
+- Retries pile up, and some requests run out of attempts.
+- A server can block a client that ignores 429s for a longer time.
+
+## Why a fixed rate is not enough
+
+A fixed client-side rate, such as `TokenBucketRateLimiter` from `System.Threading.RateLimiting`, stops the flood. But you must choose the number:
+
+- Too high, and you still get 429s.
+- Too low, and you waste the budget that the server gives you.
+- When the budget changes, the fixed number is wrong again.
+
+## What an adaptive limiter does
+
+An adaptive limiter changes its rate from what the server tells it:
+
+1. Each request waits in a token bucket until it has its units.
+2. A throttled response cuts the rate, and a `Retry-After` pauses all requests of the limiter.
+3. A successful response raises the rate, but only if requests had to wait for units. A client that sends less than the limit does not raise its rate.
+4. The rate stays between `MinUnitsPerMinute` and `MaxUnitsPerMinute`.
+
+TCP uses the same idea to find the speed of a network. This library has the two common rules, AIMD and CUBIC, and lets you write your own.
+
+<Aside type="tip">
+Keep your retry policy. The limiter does not replace it. Put the limit handler inside the retry handler, so each retry also waits for units. See [Add a retry policy](/adaptive-rate-limiting-dotnet/guide/getting-started/#add-a-retry-policy).
+</Aside>
+
+## Model numbers
+
+The [simulator](/adaptive-rate-limiting-dotnet/guide/playground/) runs a model of the library against a model API with a hidden quota of 3,000 units per minute. Two instances want 2,000 units per minute each, so the demand is more than the quota. After 5 minutes, another client takes half of the quota for 60 seconds. The run lasts 15 minutes. These are model numbers, not measurements of a real API:
+
+| Mode | Units accepted per minute | 429s | Rejected by the limiter | Gave up after 3 retries |
+| --- | ---: | ---: | ---: | ---: |
+| No limiter, retry only | 2,901 | 64,931 | 0 | 9,003 |
+| Fixed rate of 1,500 | 1,516 | 4 | 20,919 | 0 |
+| AIMD | 2,625 | 56 | 11,278 | 0 |
+| CUBIC | 2,900 | 793 | 9,233 | 0 |
+
+Without a limiter, the client gets the most units through, but it gets 64,931 429s and 9,003 requests fail after their last retry. The fixed rate is safe, but it uses only half of the quota. The adaptive controllers use most of the quota with far fewer 429s. Because the demand is more than the quota, every limited mode rejects the requests that wait too long. A rejected request is not sent, so it costs no quota. [Rate controllers](/adaptive-rate-limiting-dotnet/guide/controllers/) compares the modes in detail.
+
+<LinkCard title="Get started" description="Add the limiter to an HttpClient." href="/adaptive-rate-limiting-dotnet/guide/getting-started/" />

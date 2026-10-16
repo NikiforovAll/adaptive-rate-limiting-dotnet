@@ -1,0 +1,226 @@
+---
+title: Rate controllers
+description: AIMD and CUBIC compared, and how to write your own IRateController.
+---
+
+import { Aside, Badge, Tabs, TabItem } from '@astrojs/starlight/components';
+import RateShapes from '../../../components/diagrams/RateShapes.astro';
+import RateLimitSimulator from '../../../components/RateLimitSimulator.astro';
+
+A rate controller decides the next rate. The limiter calls it on each throttle and on each success. Two controllers are built in: AIMD <Badge text="default" variant="tip" /> and CUBIC. Select one with the `Controller` option, or give your own `IRateController`.
+
+```json title="appsettings.json"
+{
+  "AdaptiveRateLimiting": {
+    "Limiters": {
+      "orders-api": {
+        "Controller": "Cubic"
+      }
+    }
+  }
+}
+```
+
+<RateShapes />
+
+## AIMD
+
+AIMD means additive increase, multiplicative decrease.
+
+- **On a throttle**, the rate is multiplied by `Aimd.DecreaseFactor` (0.7), down to the minimum.
+- **On a success**, if `Aimd.IncreaseInterval` (10 seconds) has passed since the last change, and requests had to wait in it, the rate goes up by `Aimd.IncreaseStep` (120 units per minute for the whole budget), up to the maximum.
+
+With the defaults, the rate climbs by at most 720 units per minute in each minute. The climb is slow and predictable, and the rate spends most of its time below the limit.
+
+<RateLimitSimulator
+	view="live"
+	mode="aimd"
+	modes={['aimd']}
+	presets={[
+		{ label: 'Saw tooth', text: 'Reset and watch the steps of 60 units per minute for each of the 2 instances, and the 30% cut at the limit.', button: 'Reset', set: { reset: true } },
+		{ label: 'Bigger steps', text: 'Use an IncreaseStep of 600. The rate climbs 5 times faster and finds the limit sooner.', button: 'IncreaseStep 600', set: { options: { aimd: { increaseStep: 600 } } } },
+		{ label: 'Quota drop', text: 'Another client takes half of the quota for 60 seconds.', button: 'Drop the quota', set: { drop: true } },
+	]}
+/>
+
+## CUBIC
+
+CUBIC uses the window curve of [RFC 8312](https://www.rfc-editor.org/rfc/rfc8312), with the constants of the AWS SDK adaptive retry mode.
+
+- **On a throttle**, the rate is multiplied by `Cubic.Beta` (0.7), down to the minimum.
+- **On a success**, if requests had to wait, the rate follows this curve. The curve is in units per second:
+
+  > K = ∛(W × (1 − β) / C), rate = C × (t − K)³ + W
+
+  W is the rate before the last cut. t is the seconds since the last cut. C is `Cubic.ScaleConstant` (0.4 for the whole budget). The rate never goes down on a success, and it stays between the minimum and the maximum.
+
+CUBIC has no increase interval. Each success after a wait can raise the rate.
+
+### How CUBIC behaves with the defaults
+
+The curve is fast for rates of hundreds or thousands of units per minute. These are model numbers from the simulator: 2 instances, a hidden quota of 3,000 units per minute, a demand of 2,000 per instance, seed 42. The share of one instance has a maximum of 2,812.5 units per minute.
+
+- **After a cut**, K is about 4 seconds. One instance got back to its maximum 4.2 seconds after a cut in the median case (28 cuts in the first 5 minutes, from 4.2 to 14.4 seconds).
+- **Before the first throttle**, the curve starts at the time the limiter was created, with W equal to the initial rate. The rate rose above the initial share after 5.3 seconds, and reached the maximum after 8.3 seconds. After that, the initial rate has no effect.
+- **After a pause**, t counts from the throttle, not from the end of the pause. So the first success after a long pause can move the rate far up the curve. After a pause of 13 seconds, the first success raised the rate from 1,969 to 2,813 units per minute (×1.43, the maximum) at once.
+- **Unlike the AWS SDK**, W is the current rate of the limiter, not a measured send rate, and the rate is not capped at twice the measured rate.
+
+So with the defaults, CUBIC spends most of its time at `MaxUnitsPerMinute`, and it finds the real limit by a throttle. Set `MaxUnitsPerMinute` close to, and below, the real limit when you use CUBIC.
+
+<RateLimitSimulator
+	view="live"
+	mode="cubic"
+	modes={['cubic']}
+	presets={[
+		{ label: 'The first seconds', text: 'Reset and watch the rate leave the initial value after about 5 seconds.', button: 'Reset', set: { reset: true } },
+		{ label: 'Maximum below the quota', text: 'Set MaxUnitsPerMinute to 2,700, below the hidden quota of 3,000. The rate stays at the maximum with few 429s.', button: 'Max 2,700', set: { options: { maxUnitsPerMinute: 2700 } } },
+		{ label: 'Quota drop', text: 'Another client takes half of the quota for 60 seconds.', button: 'Drop the quota', set: { drop: true } },
+	]}
+/>
+
+## Compare the modes
+
+This view runs all four modes on the same seed for 15 minutes. After 5 minutes, another client takes half of the quota for 60 seconds. Change the instances, the quota or the demand, and run it again.
+
+<RateLimitSimulator view="compare" instances={2} quota={3000} demand={2000} />
+
+The columns:
+
+| Column | Meaning |
+| --- | --- |
+| Throughput | Units that the API accepted, per minute, over the run. |
+| Share of quota | Throughput divided by the mean quota of the run. |
+| 429s | Throttled responses. |
+| Rejected | Requests that the limiter did not send: the queue was full, or the wait was longer than `MaxWait`. |
+| Gave up | Requests that got a 429 on each of their 4 attempts. |
+| p95 wait | The 95th percentile of the wait for units, in seconds. |
+| Recovery | Seconds after the quota comes back until the accepted units reach 90% of the minute before the drop. |
+
+The same comparison for five scenarios. Model numbers, seed 42:
+
+<Tabs>
+<TabItem label="Default">
+
+Quota 3,000, 2 instances of 2,000.
+
+| Mode | Throughput | Share | 429s | Rejected | Gave up | p95 wait | Recovery |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| No limiter | 2,901 | 100% | 64,931 | 0 | 9,003 | 0.0 s | 1 s |
+| Fixed rate | 1,516 | 52% | 4 | 20,919 | 0 | 70.4 s | 0 s |
+| AIMD | 2,625 | 90% | 56 | 11,278 | 0 | 44.0 s | 8 s |
+| CUBIC | 2,900 | 100% | 793 | 9,233 | 0 | 53.0 s | 27 s |
+
+</TabItem>
+<TabItem label="Three instances">
+
+Quota 3,000, 3 instances of 1,500.
+
+| Mode | Throughput | Share | 429s | Rejected | Gave up | p95 wait | Recovery |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| No limiter | 2,900 | 100% | 80,540 | 0 | 12,980 | 0.0 s | 1 s |
+| Fixed rate | 1,516 | 52% | 3 | 24,544 | 0 | 99.7 s | 0 s |
+| AIMD | 2,665 | 92% | 52 | 14,679 | 0 | 81.5 s | 3 s |
+| CUBIC | 2,900 | 100% | 662 | 12,581 | 0 | 69.7 s | 20 s |
+
+</TabItem>
+<TabItem label="Low demand">
+
+Quota 3,000, 2 instances of 1,000. The demand is below the quota.
+
+| Mode | Throughput | Share | 429s | Rejected | Gave up | p95 wait | Recovery |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| No limiter | 1,973 | 68% | 1,882 | 0 | 319 | 0.0 s | 0 s |
+| Fixed rate | 1,516 | 52% | 4 | 3,387 | 0 | 70.7 s | 0 s |
+| AIMD | 2,010 | 69% | 5 | 0 | 0 | 21.4 s | 0 s |
+| CUBIC | 2,010 | 69% | 236 | 0 | 0 | 12.1 s | 0 s |
+
+</TabItem>
+<TabItem label="Large quota">
+
+Quota 6,000, 2 instances of 4,000. The default maximum of 5,625 is below the quota.
+
+| Mode | Throughput | Share | 429s | Rejected | Gave up | p95 wait | Recovery |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| No limiter | 5,801 | 100% | 129,157 | 0 | 17,913 | 0.0 s | 1 s |
+| Fixed rate | 1,516 | 26% | 0 | 56,214 | 0 | 70.4 s | 0 s |
+| AIMD | 4,489 | 77% | 14 | 29,996 | 0 | 42.9 s | 23 s |
+| CUBIC | 5,424 | 93% | 20 | 21,657 | 0 | 19.1 s | 0 s |
+
+</TabItem>
+<TabItem label="Max below quota">
+
+Quota 3,000, 2 instances of 2,000, `MaxUnitsPerMinute` 2,700. The fixed rate and no limiter do not change, so they are not shown.
+
+| Mode | Throughput | Share | 429s | Rejected | Gave up | p95 wait | Recovery |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| AIMD | 2,528 | 87% | 10 | 12,097 | 0 | 45.9 s | 23 s |
+| CUBIC | 2,626 | 91% | 7 | 11,275 | 0 | 40.6 s | 0 s |
+
+</TabItem>
+</Tabs>
+
+To get these numbers without a browser, run `npm run simulate` in the `docs` folder.
+
+## Choosing a controller
+
+| If | Use |
+| --- | --- |
+| You do not know the limit, and 429s are expensive | AIMD, the default. It has the fewest 429s when the maximum is above the real limit. |
+| You know the limit, and you can set `MaxUnitsPerMinute` just below it | CUBIC. It gets to the maximum in seconds and stays there. |
+| The quota is large, and AIMD climbs too slowly | AIMD with a larger `Aimd.IncreaseStep`, or CUBIC with a maximum below the limit. |
+| The rate must not change | Set `InitialUnitsPerMinute`, `MinUnitsPerMinute` and `MaxUnitsPerMinute` to the same value. The limiter still pauses on `Retry-After`. |
+| You need a different rule | Write an `IRateController`. |
+
+<Aside type="caution">
+With the defaults, CUBIC goes to `MaxUnitsPerMinute` within seconds, before the first throttle and after each cut. If the maximum is far above the real limit, expect regular 429s. In the default scenario above, CUBIC got 793 429s and AIMD got 56.
+</Aside>
+
+## Write your own controller
+
+Implement `IRateController`. The controller is pure: it gets a `RateControllerState` and returns a rate. The limiter does the rest: the lock, the clock, the minimum and maximum, the instance share, the cooldown, the pause, and the rule that a request sent before the last cut does not cut again.
+
+```csharp title="StepController.cs"
+public sealed class StepController(double step) : IRateController
+{
+    private static readonly TimeSpan s_interval = TimeSpan.FromSeconds(30);
+
+    public double OnThrottled(in RateControllerState state) =>
+        Math.Max(state.Rate / 2, state.MinRate);
+
+    public double? OnSuccess(in RateControllerState state)
+    {
+        if (!state.Waited || state.SinceLastIncrease < s_interval)
+        {
+            return null;
+        }
+
+        return state.Rate + step / state.InstanceCount;
+    }
+}
+```
+
+Register it for a named limiter, or pass it to the constructor:
+
+```csharp
+services.AddAdaptiveRateLimiter("billing-api").WithController(new StepController(step: 30));
+```
+
+A custom controller replaces the `Controller` option. `WithController<T>()` creates the controller from the container.
+
+### The contract
+
+`OnThrottled` returns the new rate. The limiter uses the lower of that rate and the current rate, and keeps it at the minimum or above. It calls `OnThrottled` only when it cuts: on the first throttle, and later only after `DecreaseCooldown` and for a request sent after the last cut.
+
+`OnSuccess` returns the new rate, or `null` for no change. A non-null value, also the same rate, restarts the increase clock and clears the `Waited` flag. The limiter does not call `OnSuccess` during a pause.
+
+All rates in the state are for this process, in units per minute:
+
+| Property | Meaning |
+| --- | --- |
+| `Rate` | The current rate. |
+| `MinRate`, `MaxRate` | The share of this process of `MinUnitsPerMinute` and `MaxUnitsPerMinute`. |
+| `RateBeforeLastDecrease` | The rate before the last cut. Before the first cut, the initial rate. |
+| `SinceLastDecrease` | The time since the last cut. Before the first cut, the time since the limiter was created. |
+| `SinceLastIncrease` | The time since the last change from `OnSuccess`, or since the last throttle. After a pause, it counts from the end of the pause. |
+| `Waited` | True if a request had to wait for units since the last change. |
+| `InstanceCount` | The number of processes that share the budget. Divide whole-budget steps by it. |
