@@ -1,7 +1,6 @@
 import { COMPARISON, MODES, race, Simulation, STORIES, storyPlan, withDefaults } from './engine.js';
 import { axes, clock, esc, fmt, INSTANCE_CLASS, path, sumRates, svg } from './draw.js';
 import { drawRace } from './race.js';
-import { drawSweep, nameOf, runSweep, sweepOptions, SWEEPS } from './advisor.js';
 import { decodeState, encodeState, FIELDS, getOption, setOption, toAppSettings, toCSharp, validate } from './options.js';
 
 const HISTORY = 300;
@@ -45,8 +44,6 @@ function mount(el) {
 	let hits = [];
 	let selected = null;
 	let raceState = null;
-	let sweepResult = null;
-	let sweepToken = 0;
 
 	if (tools) {
 		const saved = decodeState(location.hash);
@@ -264,7 +261,7 @@ function mount(el) {
 		r.raf = r.cursor < r.plan.duration ? requestAnimationFrame(raceFrame) : 0;
 	}
 
-	/* Tools: the options editor, the sweep, the export and the link. */
+	/* Tools: the options editor, the export and the link. */
 	function changed() {
 		if (!tools) return;
 		drawOptions();
@@ -356,48 +353,6 @@ function mount(el) {
 		setTimeout(() => (button.textContent = before), 1500);
 	}
 
-	const sweepKey = $('sweep-key');
-	const sweepController = $('sweep-controller');
-	if (sweepKey) {
-		sweepKey.innerHTML = Object.keys(SWEEPS)
-			.map((k) => `<option value="${k}">${nameOf(k)}</option>`)
-			.join('');
-		const syncController = () => {
-			const fixed = SWEEPS[sweepKey.value].controller;
-			if (fixed) sweepController.value = fixed;
-			sweepController.disabled = Boolean(fixed);
-		};
-		sweepKey.addEventListener('change', syncController);
-		const mode = world().mode;
-		sweepController.value = mode === 'cubic' ? 'cubic' : 'aimd';
-		syncController();
-	}
-
-	async function sweep() {
-		const target = $('sweep');
-		const status = $('sweep-status');
-		const use = $('sweep-use');
-		const token = ++sweepToken;
-		const w = world();
-		const args = { world: w, story: story(), seed: seed(), controller: sweepController.value, key: sweepKey.value };
-		if (use) use.hidden = true;
-		const result = await runSweep(
-			args,
-			(done, total) => {
-				if (status) status.textContent = `Running ${done} of ${total}`;
-			},
-			() => token !== sweepToken,
-		);
-		if (!result) return;
-		sweepResult = { ...result, ctx: { quota: w.quota, options: w.options } };
-		if (status) status.textContent = `${STORIES[args.story].label}, ${clock(storyPlan(args.story).duration)} min, seed ${args.seed}. Model numbers.`;
-		drawSweep(target, sweepResult, sweepResult.ctx, width);
-		if (use) {
-			use.hidden = false;
-			use.textContent = `Use ${nameOf(result.key)} = ${result.pick.value}`;
-		}
-	}
-
 	function applyPreset(preset) {
 		if (preset.options) options = { ...(config.options ?? {}), ...preset.options };
 		for (const key of ['mode', 'instances', 'quota', 'demand', 'story']) {
@@ -457,13 +412,6 @@ function mount(el) {
 			runRace(false);
 		}
 	});
-	$('sweep-run')?.addEventListener('click', sweep);
-	$('sweep-use')?.addEventListener('click', () => {
-		if (!sweepResult) return;
-		applyOptions(sweepOptions(options, sweepResult.key, sweepResult.pick.value));
-		sweepResult.ctx.options = options;
-		drawSweep($('sweep'), sweepResult, sweepResult.ctx, width);
-	});
 	$('options-reset')?.addEventListener('click', () => applyOptions({ ...(config.options ?? {}) }));
 	for (const b of el.querySelectorAll('[data-export]')) {
 		b.addEventListener('click', () => {
@@ -494,9 +442,7 @@ function mount(el) {
 			if (next && next !== width) {
 				width = next;
 				render();
-				if (raceState) drawRace($('compare'), raceState.results, raceState.plan, raceState.cursor, width);
-				if (sweepResult) drawSweep($('sweep'), sweepResult, sweepResult.ctx, width);
-			}
+				if (raceState) drawRace($('compare'), raceState.results, raceState.plan, raceState.cursor, width);			}
 		}, 80);
 	}).observe(el);
 

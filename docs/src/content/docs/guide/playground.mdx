@@ -9,7 +9,7 @@ import RateLimitSimulator from '../../../components/RateLimitSimulator.astro';
 
 <span class="wide-page" hidden></span>
 
-The simulator runs a model of the limiter in your browser. Choose a story, a mode, the number of instances, the hidden quota and the demand. Then watch the queues, the buckets and the quota. Below the live view, all modes race through the same story. At the bottom, find a value for one option and export your settings.
+The simulator runs a model of the limiter in your browser. Choose a story, a mode, the number of instances, the hidden quota and the demand. Then watch the queues, the buckets and the quota. Below the live view, all modes race through the same story. At the bottom, change the limiter options and export your settings.
 
 <RateLimitSimulator
 	view="both"
@@ -59,12 +59,6 @@ The marks on the live chart show the rules of the limiter. Point at a mark to re
 ## The race
 
 The race runs all four modes through the story on the same seed, so each mode sees the same requests at the same times. The bars show the units that the API accepted so far. More units is not the only goal: "No limiter" gets many units, but with tens of thousands of throttles. Press **Run the race** to replay it, or **Show the result** for the table.
-
-## Find a setting
-
-The sweep runs the story once for each value of one option, with the other settings as they are. The top chart shows the accepted units per minute, and the bottom chart the throttled responses. The model pick is the value with the fewest throttles, of the values that get 98% or more of the best throughput. Press the button below the chart to use the value.
-
-For `MaxUnitsPerMinute`, the units stop going up near the hidden quota, but the throttles keep going up. That is the knee. Set `MaxUnitsPerMinute` near the knee, and below the published limit of your API.
 
 ## Export the settings
 

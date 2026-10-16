@@ -34,7 +34,7 @@ interface Props {
 	/** Shows the story picker. The race then runs the chosen story. */
 	stories?: boolean;
 	story?: Story;
-	/** Shows the seed, the options editor, the sweep, the export, and keeps the state in the URL hash. */
+	/** Shows the seed, the options editor, the export, and keeps the state in the URL hash. */
 	tools?: boolean;
 	seed?: number;
 }
@@ -247,33 +247,6 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 						Reset the options
 					</button>
 				</details>
-
-				<div class="sim-panel" data-role="sweep">
-					<p class="sim-section">Find a setting</p>
-					<p class="sim-note">Run the current story once for each value of one option. Then read where more of the setting stops giving more units.</p>
-					<div class="sim-buttons">
-						<label>
-							Option <select data-role="sweep-key" />
-						</label>
-						<label>
-							Controller
-							<select data-role="sweep-controller">
-								<option value="aimd">AIMD</option>
-								<option value="cubic">CUBIC</option>
-							</select>
-						</label>
-						<button type="button" class="sim-btn sim-primary" data-role="sweep-run">
-							Run the sweep
-						</button>
-						<span class="sim-note" data-role="sweep-status" aria-live="polite" />
-					</div>
-					<svg class="sim-svg" data-role="sweep-chart" role="img" aria-label="Sweep chart" />
-					<p data-role="sweep-pick" aria-live="polite" />
-					<button type="button" class="sim-btn" data-role="sweep-use" hidden />
-					<div class="sim-table">
-						<table data-role="sweep-table" />
-					</div>
-				</div>
 
 				<div class="sim-panel">
 					<p class="sim-section">Export the settings</p>
@@ -910,11 +883,6 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 		stroke: var(--sl-color-gray-3);
 		stroke-width: 1;
 	}
-	.rate-sim :global(.st-current) {
-		stroke: var(--sl-color-accent);
-		stroke-width: 1.5;
-		stroke-dasharray: 3 3;
-	}
 	.rate-sim :global(.mk-story) {
 		fill: var(--sl-color-bg);
 		stroke: var(--sl-color-white);
@@ -934,22 +902,6 @@ const config = JSON.stringify({ mode, instances, quota, demand, options, compare
 	}
 	.rate-sim :global(.race-head) {
 		fill: var(--k);
-	}
-	.rate-sim :global(.s-pick) {
-		stroke: var(--sl-color-blue);
-	}
-	.rate-sim :global(.s-bad) {
-		stroke: var(--sim-red);
-	}
-	.rate-sim :global(.dot) {
-		fill: var(--sl-color-bg);
-		stroke: var(--sl-color-gray-2);
-		stroke-width: 1.5;
-	}
-	.rate-sim :global(.dot-pick) {
-		fill: var(--sl-color-green);
-		stroke: var(--sl-color-bg);
-		stroke-width: 1.5;
 	}
 	.rate-sim :global(.k-cut),
 	.rate-sim :global(.k-max),
