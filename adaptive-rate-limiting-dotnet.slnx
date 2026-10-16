@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Nall.RateLimiting.Adaptive/Nall.RateLimiting.Adaptive.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Nall.RateLimiting.Adaptive.Tests/Nall.RateLimiting.Adaptive.Tests.csproj" />
+  </Folder>
+</Solution>
