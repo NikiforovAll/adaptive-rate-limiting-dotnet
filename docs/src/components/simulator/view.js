@@ -245,7 +245,7 @@ function mount(el) {
 		const results = race({ instances: base.instances, quota: base.quota, demand: base.demand, options }, key, runSeed, modes);
 		const plan = storyPlan(key, runSeed);
 		if (raceState?.raf) cancelAnimationFrame(raceState.raf);
-		raceState = { results, plan, cursor: animate && !reducedMotion ? 0 : plan.duration, raf: 0, last: 0 };
+		raceState = { results, plan, cursor: animate ? 0 : plan.duration, raf: 0, last: 0 };
 		const note = $('compare-note');
 		if (note) {
 			const s = STORIES[key];
