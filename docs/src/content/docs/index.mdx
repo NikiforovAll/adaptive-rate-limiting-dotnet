@@ -1,0 +1,36 @@
+---
+title: Nall.RateLimiting.Adaptive
+description: Adaptive client-side rate limiting for .NET HttpClient, with pluggable rate controllers.
+template: splash
+hero:
+  tagline: Stay under the throttling budget. The client slows down on 429s, honors Retry-After, and climbs back when the server allows it.
+  actions:
+    - text: Get started
+      link: /adaptive-rate-limiting-dotnet/guide/getting-started/
+      icon: right-arrow
+    - text: GitHub
+      link: https://github.com/NikiforovAll/adaptive-rate-limiting-dotnet
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+```bash
+dotnet add package Nall.RateLimiting.Adaptive
+```
+
+<CardGrid>
+	<Card title="Pluggable controllers" icon="setting">
+		AIMD and CUBIC are built in. Write your own `IRateController` for a different curve.
+	</Card>
+	<Card title="Built on System.Threading.RateLimiting" icon="puzzle">
+		The library changes the rate. The limiter shape comes from the platform.
+	</Card>
+	<Card title="Shared budget" icon="random">
+		Split one budget across processes with a static or live instance count.
+	</Card>
+	<Card title="Microsoft Graph" icon="seti:json">
+		Resource-unit costs for Graph and SharePoint calls, `$batch` included.
+	</Card>
+</CardGrid>
