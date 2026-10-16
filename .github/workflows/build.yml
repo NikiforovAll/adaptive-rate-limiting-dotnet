@@ -1,0 +1,50 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  MINVERBUILDMETADATA: build.${{github.run_number}}
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+          global-json-file: global.json
+
+      - name: Dotnet Restore
+        run: dotnet restore adaptive-rate-limiting-dotnet.slnx
+
+      - name: Dotnet Build
+        run: dotnet build adaptive-rate-limiting-dotnet.slnx --configuration Release --no-restore
+
+      - name: Dotnet Test
+        run: >
+          dotnet test --solution adaptive-rate-limiting-dotnet.slnx
+          --configuration Release --no-build
+          --report-trx --results-directory ./Artefacts
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./Artefacts
+          if-no-files-found: ignore
