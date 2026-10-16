@@ -89,12 +89,25 @@ public sealed class AdaptiveRateLimiterOptions
     /// </summary>
     public AimdOptions Aimd { get; set; } = new();
 
+    /// <summary>
+    /// Settings of <see cref="CubicController"/>.
+    /// </summary>
+    public CubicOptions Cubic { get; set; } = new();
+
     internal AdaptiveRateLimiterOptions Clone()
     {
         var clone = (AdaptiveRateLimiterOptions)MemberwiseClone();
         clone.Aimd = (Aimd ?? new()).Clone();
+        clone.Cubic = (Cubic ?? new()).Clone();
         return clone;
     }
+
+    internal IRateController CreateController() =>
+        Controller switch
+        {
+            RateControllerType.Cubic => new CubicController(Cubic),
+            _ => new AimdController(Aimd),
+        };
 
     /// <summary>
     /// Checks the settings at the share of one of <paramref name="instanceCount"/> processes.
@@ -126,11 +139,12 @@ public sealed class AdaptiveRateLimiterOptions
         ArgumentOutOfRangeException.ThrowIfNegative((int)Controller, nameof(Controller));
         ArgumentOutOfRangeException.ThrowIfGreaterThan(
             (int)Controller,
-            (int)RateControllerType.Aimd,
+            (int)RateControllerType.Cubic,
             nameof(Controller)
         );
 
         (Aimd ?? new()).Validate();
+        (Cubic ?? new()).Validate();
 
         var minPerSecond = min / 60;
         var units = Math.Min(MaxRequestUnits, Math.Max(1, minPerSecond * Burst.TotalSeconds));

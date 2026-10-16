@@ -75,7 +75,7 @@ public sealed class AdaptiveRateLimiter : IDisposable
         _customController = controller;
         _customClassifier = throttleClassifier;
         _statusClassifier = new HttpThrottleClassifier(_time);
-        _controller = controller ?? CreateController(copy);
+        _controller = controller ?? copy.CreateController();
         _rate = copy.InitialUnitsPerMinute / _instanceCount;
         _rateBeforeLastDecrease = _rate;
         _lastIncrease = _time.GetTimestamp();
@@ -287,7 +287,7 @@ public sealed class AdaptiveRateLimiter : IDisposable
         {
             var instanceCount = _instanceSourceAttached ? _instanceCount : copy.InstanceCount;
             copy.Validate(instanceCount);
-            var controller = _customController ?? CreateController(copy);
+            var controller = _customController ?? copy.CreateController();
 
             var previous = _instanceCount;
             _options = copy;
@@ -412,9 +412,6 @@ public sealed class AdaptiveRateLimiter : IDisposable
             SetRate(rate);
         }
     }
-
-    private static AimdController CreateController(AdaptiveRateLimiterOptions options) =>
-        new AimdController(options.Aimd);
 
     private static double BucketRate(double unitsPerMinute) =>
         Math.Max(unitsPerMinute / 60, double.Epsilon);

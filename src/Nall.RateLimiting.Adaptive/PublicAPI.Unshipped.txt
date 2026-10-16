@@ -117,6 +117,19 @@ Nall.RateLimiting.Adaptive.RateControllerState.Waited.get -> bool
 Nall.RateLimiting.Adaptive.RateControllerState.Waited.init -> void
 Nall.RateLimiting.Adaptive.RateControllerType
 Nall.RateLimiting.Adaptive.RateControllerType.Aimd = 0 -> Nall.RateLimiting.Adaptive.RateControllerType
+Nall.RateLimiting.Adaptive.RateControllerType.Cubic = 1 -> Nall.RateLimiting.Adaptive.RateControllerType
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.Cubic.get -> Nall.RateLimiting.Adaptive.CubicOptions!
+Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions.Cubic.set -> void
+Nall.RateLimiting.Adaptive.CubicController
+Nall.RateLimiting.Adaptive.CubicController.CubicController(Nall.RateLimiting.Adaptive.CubicOptions? options = null) -> void
+Nall.RateLimiting.Adaptive.CubicController.OnSuccess(in Nall.RateLimiting.Adaptive.RateControllerState state) -> double?
+Nall.RateLimiting.Adaptive.CubicController.OnThrottled(in Nall.RateLimiting.Adaptive.RateControllerState state) -> double
+Nall.RateLimiting.Adaptive.CubicOptions
+Nall.RateLimiting.Adaptive.CubicOptions.Beta.get -> double
+Nall.RateLimiting.Adaptive.CubicOptions.Beta.set -> void
+Nall.RateLimiting.Adaptive.CubicOptions.CubicOptions() -> void
+Nall.RateLimiting.Adaptive.CubicOptions.ScaleConstant.get -> double
+Nall.RateLimiting.Adaptive.CubicOptions.ScaleConstant.set -> void
 Nall.RateLimiting.Adaptive.RateLimitRejectedException
 Nall.RateLimiting.Adaptive.RateLimitRejectedException.RateLimitRejectedException() -> void
 Nall.RateLimiting.Adaptive.RateLimitRejectedException.RateLimitRejectedException(string! message) -> void

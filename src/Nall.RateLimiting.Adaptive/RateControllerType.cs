@@ -9,4 +9,9 @@ public enum RateControllerType
     /// <see cref="AimdController"/>: additive increase, multiplicative decrease.
     /// </summary>
     Aimd,
+
+    /// <summary>
+    /// <see cref="CubicController"/>: the cubic curve of the AWS SDK adaptive retry mode.
+    /// </summary>
+    Cubic,
 }
