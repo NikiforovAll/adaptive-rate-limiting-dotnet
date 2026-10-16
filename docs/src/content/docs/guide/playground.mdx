@@ -29,14 +29,6 @@ The race shows the result, but not the cause. The live run shows one mode at a t
 	demand={2000}
 	stories
 	tools
-	presets={[
-		{ label: 'A noisy neighbor', text: 'After 5 minutes, another client takes half of the quota for 60 seconds. Watch the cut and the climb back.', button: 'Play', set: { story: 'neighbor', mode: 'aimd' } },
-		{ label: 'The server cuts the quota', text: 'The quota goes to 60% for 3 minutes. Compare how fast AIMD and CUBIC find the new limit.', button: 'Play', set: { story: 'cut', mode: 'cubic' } },
-		{ label: 'Scale out', text: 'From 1 to 4 instances. Each limiter scales its rate to its share, and the sum stays near the quota.', button: 'Play', set: { story: 'scale', mode: 'aimd' } },
-		{ label: 'Top of the hour', text: 'A job adds two times the demand for 90 seconds. The queues fill, and MaxWait starts to reject.', button: 'Play', set: { story: 'burst', mode: 'aimd' } },
-		{ label: 'A long Retry-After', text: 'The API is down for 90 seconds. The limiter pauses for MaxPause, then tries again, and cuts at each try.', button: 'Play', set: { story: 'outage', mode: 'aimd' } },
-		{ label: 'Retry only', text: 'No limiter. Each instance sends at once and retries after Retry-After. Compare the throttles.', button: 'No limiter', set: { mode: 'none' } },
-	]}
 />
 
 ## Controls
