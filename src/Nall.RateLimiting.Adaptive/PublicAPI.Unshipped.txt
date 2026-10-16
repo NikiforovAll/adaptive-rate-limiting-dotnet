@@ -1,4 +1,21 @@
 #nullable enable
+const Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterServiceCollectionExtensions.LimitersSection = "AdaptiveRateLimiting:Limiters" -> string!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.Name.get -> string!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.Services.get -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithController(Nall.RateLimiting.Adaptive.IRateController! controller) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithController<T>() -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithCostEstimator(Nall.RateLimiting.Adaptive.IRequestCostEstimator! estimator) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithCostEstimator<T>() -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithInstanceCount(Nall.RateLimiting.Adaptive.IInstanceCountSource! source) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithInstanceCount<T>() -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithThrottleClassifier(Nall.RateLimiting.Adaptive.IThrottleClassifier! classifier) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder.WithThrottleClassifier<T>() -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterServiceCollectionExtensions
+static Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterServiceCollectionExtensions.AddAdaptiveRateLimiter(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+static Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterServiceCollectionExtensions.AddAdaptiveRateLimiter(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, Microsoft.Extensions.Configuration.IConfiguration! configuration) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+static Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterServiceCollectionExtensions.AddAdaptiveRateLimiter(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Nall.RateLimiting.Adaptive.AdaptiveRateLimiterOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterBuilder!
+static Microsoft.Extensions.DependencyInjection.AdaptiveRateLimiterServiceCollectionExtensions.AddAdaptiveRateLimitHandler(this Microsoft.Extensions.DependencyInjection.IHttpClientBuilder! builder, string! name) -> Microsoft.Extensions.DependencyInjection.IHttpClientBuilder!
 Nall.RateLimiting.Adaptive.AdaptiveTokenBucket
 Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.AdaptiveTokenBucket(double tokensPerSecond, System.TimeSpan burst, int queueLimit, System.TimeProvider? timeProvider = null) -> void
 Nall.RateLimiting.Adaptive.AdaptiveTokenBucket.Pause(System.TimeSpan duration) -> void
