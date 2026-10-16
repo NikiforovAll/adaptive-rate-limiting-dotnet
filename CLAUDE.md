@@ -2,7 +2,7 @@
 
 ## Project
 
-`Nall.RateLimiting.Adaptive`: adaptive (AIMD) client-side rate limiting for .NET `HttpClient`. The limiter shape comes from `System.Threading.RateLimiting`; this library owns only the controller that changes the rate. `Nall.RateLimiting.Adaptive.MicrosoftGraph` adds Graph and SharePoint resource-unit costs. Targets `net8.0;net10.0`.
+`Nall.RateLimiting.Adaptive`: adaptive client-side rate limiting for .NET `HttpClient`. The limiter shape comes from `System.Threading.RateLimiting`; this library owns only the controller that changes the rate. Controllers are pluggable through `IRateController` (built-ins: AIMD, CUBIC); keep the core free of controller-specific types. `Nall.RateLimiting.Adaptive.MicrosoftGraph` adds Graph and SharePoint resource-unit costs. Targets `net8.0;net10.0`.
 
 ## Commands
 

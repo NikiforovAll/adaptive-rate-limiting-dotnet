@@ -1,6 +1,6 @@
 # Nall.RateLimiting.Adaptive
 
-Adaptive (AIMD) client-side rate limiting for .NET `HttpClient`, with Microsoft Graph and SharePoint support.
+Adaptive client-side rate limiting for .NET `HttpClient`, with pluggable rate controllers (AIMD, CUBIC), `Retry-After` support and a shared budget across processes. Includes Microsoft Graph and SharePoint support.
 
 Work in progress. Not published yet.
 
