@@ -29,6 +29,12 @@ jobs:
           dotnet-version: 8.0.x
           global-json-file: global.json
 
+      - name: Dotnet Tool Restore
+        run: dotnet tool restore
+
+      - name: Format Check
+        run: dotnet csharpier check .
+
       - name: Dotnet Restore
         run: dotnet restore adaptive-rate-limiting-dotnet.slnx
 
