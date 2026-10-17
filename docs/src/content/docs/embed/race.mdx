@@ -1,0 +1,24 @@
+---
+title: The race
+description: The race of the simulator, without the site chrome, for an iframe.
+template: splash
+pagefind: false
+editUrl: false
+lastUpdated: false
+prev: false
+next: false
+head:
+  - tag: meta
+    attrs:
+      name: robots
+      content: noindex
+  # The host pages are light only. Starlight's theme picker sets data-theme again after load.
+  - tag: script
+    content: "const r = document.documentElement; const pin = () => { if (r.dataset.theme !== 'light') r.dataset.theme = 'light'; }; pin(); new MutationObserver(pin).observe(r, { attributeFilter: ['data-theme'] });"
+---
+
+import RateLimitSimulator from '../../../components/RateLimitSimulator.astro';
+
+<span class="embed-page" hidden></span>
+
+<RateLimitSimulator view="compare" stories instances={2} quota={3000} demand={2000} />

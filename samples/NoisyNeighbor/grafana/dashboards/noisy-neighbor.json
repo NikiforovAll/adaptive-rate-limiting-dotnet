@@ -1,0 +1,157 @@
+{
+  "uid": "noisy-neighbor",
+  "title": "Noisy neighbor",
+  "description": "Adaptive rate limiter: workers that share a hidden quota with a noisy neighbor.",
+  "schemaVersion": 39,
+  "editable": true,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m"] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Limiter rate per worker (units/min)",
+      "description": "ratelimit.adaptive.rate: the share of each worker. AIMD cuts it by 0.7 on a 429 and raises it by a step while requests wait.",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "interval": "5s",
+      "targets": [
+        { "refId": "A", "expr": "ratelimit_adaptive_rate_per_min", "legendFormat": "{{instance}}" },
+        { "refId": "B", "expr": "sum(ratelimit_adaptive_rate_per_min)", "legendFormat": "sum of workers" },
+        { "refId": "C", "expr": "max(quota_limit_per_min)", "legendFormat": "hidden quota" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": { "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "sum of workers" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [8, 4] } },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "hidden quota" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [2, 4] } },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Accepted by the server (req/min)",
+      "description": "quota.requests with outcome=accepted, by client. The neighbor takes its part; the workers fill the rest.",
+      "gridPos": { "x": 0, "y": 10, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "interval": "5s",
+      "targets": [
+        { "refId": "A", "expr": "sum by (client) (rate(quota_requests_total{outcome=\"accepted\"}[30s])) * 60", "legendFormat": "{{client}}" },
+        { "refId": "B", "expr": "max(quota_limit_per_min)", "legendFormat": "hidden quota" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": { "lineWidth": 1, "fillOpacity": 40, "showPoints": "never", "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "hidden quota" },
+            "properties": [
+              { "id": "custom.stacking", "value": { "mode": "none" } },
+              { "id": "custom.fillOpacity", "value": 0 },
+              { "id": "custom.lineWidth", "value": 2 },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [2, 4] } },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "neighbor" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "worker" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
+          }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "429 responses per worker",
+      "description": "ratelimit.adaptive.throttled in 15-second steps. Each 429 cuts the rate of that worker only.",
+      "gridPos": { "x": 12, "y": 10, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "interval": "15s",
+      "targets": [
+        { "refId": "A", "expr": "sum by (instance) (increase(ratelimit_adaptive_throttled_total[$__interval]))", "legendFormat": "{{instance}}" },
+        { "refId": "B", "expr": "sum(increase(quota_requests_total{client=\"neighbor\", outcome=\"throttled\"}[$__interval]))", "legendFormat": "neighbor (no limiter)" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "decimals": 0,
+          "custom": { "drawStyle": "bars", "fillOpacity": 70, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "neighbor (no limiter)" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }]
+          }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Wait for units, p95",
+      "description": "ratelimit.adaptive.wait: how long a request waited in the limiter before it was sent.",
+      "gridPos": { "x": 0, "y": 19, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "interval": "5s",
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, instance) (rate(ratelimit_adaptive_wait_seconds_bucket[30s])))", "legendFormat": "{{instance}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0, "custom": { "lineWidth": 1, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Queue",
+      "description": "ratelimit.adaptive.queue: requests that wait for units.",
+      "gridPos": { "x": 8, "y": 19, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "interval": "5s",
+      "targets": [{ "refId": "A", "expr": "ratelimit_adaptive_queue", "legendFormat": "{{instance}}" }],
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "decimals": 0, "custom": { "lineWidth": 1, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Workers that share the budget",
+      "description": "ratelimit.adaptive.instances: the live count from the Redis heartbeat.",
+      "gridPos": { "x": 16, "y": 19, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "interval": "5s",
+      "targets": [{ "refId": "A", "expr": "max(ratelimit_adaptive_instances)", "legendFormat": "workers" }],
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "decimals": 0, "custom": { "lineWidth": 2, "showPoints": "never", "lineInterpolation": "stepAfter" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    }
+  ]
+}
