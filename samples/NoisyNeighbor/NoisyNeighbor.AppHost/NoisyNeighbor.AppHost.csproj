@@ -1,0 +1,18 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.6.1">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Keep the dashboard and DCP packages, so that both `dotnet run` and `aspire run` work. -->
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+    <UserSecretsId>5f1d0c2e-7a63-4b8e-9d3f-2c41a6e8b7d0</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NoisyNeighbor.QuotaApi\NoisyNeighbor.QuotaApi.csproj" />
+    <ProjectReference Include="..\NoisyNeighbor.Worker\NoisyNeighbor.Worker.csproj" />
+    <PackageReference Include="Aspire.Hosting.Redis" />
+    <!-- Aspire.Hosting 13.6.1 brings MessagePack 2.5.302 (GHSA-qhrr-8q5h-9q3h). -->
+    <PackageReference Include="MessagePack" />
+  </ItemGroup>
+
+</Project>

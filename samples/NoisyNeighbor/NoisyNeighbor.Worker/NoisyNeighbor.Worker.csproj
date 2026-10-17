@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Nall.RateLimiting.Adaptive\Nall.RateLimiting.Adaptive.csproj" />
+    <ProjectReference Include="..\NoisyNeighbor.ServiceDefaults\NoisyNeighbor.ServiceDefaults.csproj" />
+    <PackageReference Include="Aspire.StackExchange.Redis" />
+  </ItemGroup>
+
+</Project>

@@ -3,6 +3,12 @@
     <Project Path="src/Nall.RateLimiting.Adaptive/Nall.RateLimiting.Adaptive.csproj" />
     <Project Path="src/Nall.RateLimiting.Adaptive.MicrosoftGraph/Nall.RateLimiting.Adaptive.MicrosoftGraph.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/NoisyNeighbor/NoisyNeighbor.AppHost/NoisyNeighbor.AppHost.csproj" />
+    <Project Path="samples/NoisyNeighbor/NoisyNeighbor.QuotaApi/NoisyNeighbor.QuotaApi.csproj" />
+    <Project Path="samples/NoisyNeighbor/NoisyNeighbor.ServiceDefaults/NoisyNeighbor.ServiceDefaults.csproj" />
+    <Project Path="samples/NoisyNeighbor/NoisyNeighbor.Worker/NoisyNeighbor.Worker.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Nall.RateLimiting.Adaptive.Tests/Nall.RateLimiting.Adaptive.Tests.csproj" />
     <Project Path="tests/Nall.RateLimiting.Adaptive.MicrosoftGraph.Tests/Nall.RateLimiting.Adaptive.MicrosoftGraph.Tests.csproj" />

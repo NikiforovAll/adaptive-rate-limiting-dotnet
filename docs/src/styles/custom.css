@@ -52,8 +52,21 @@
 	--sl-content-width: 72rem;
 }
 
-main:has(.wide-page) {
+main:has(.wide-page, .embed-page) {
 	--sl-content-width: 84rem;
+}
+
+/* The embed pages go in an iframe on other sites: no header, title or footer. */
+:root:has(.embed-page) {
+	--sl-nav-height: 0rem;
+}
+
+:root:has(.embed-page) :is(header.header, .content-panel:has(h1#_top), footer) {
+	display: none;
+}
+
+:root:has(.embed-page) .content-panel {
+	padding-block: 0.5rem;
 }
 
 :root[data-has-hero] .content-panel {
