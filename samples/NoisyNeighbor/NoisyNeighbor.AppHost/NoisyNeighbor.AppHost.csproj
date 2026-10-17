@@ -1,5 +1,4 @@
 <Project Sdk="Aspire.AppHost.Sdk/13.6.1">
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <!-- Keep the dashboard and DCP packages, so that both `dotnet run` and `aspire run` work. -->
@@ -14,5 +13,4 @@
     <!-- Aspire.Hosting 13.6.1 brings MessagePack 2.5.302 (GHSA-qhrr-8q5h-9q3h). -->
     <PackageReference Include="MessagePack" />
   </ItemGroup>
-
 </Project>
